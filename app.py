@@ -609,13 +609,13 @@ elif page == "📋 Всички разлики":
     st.markdown('</div>', unsafe_allow_html=True)
 
 # ======================================================
-# ✅ EXCEL-LIKE EDITOR WITH ADD / DELETE ROWS + AUTOSAVE
+# ✅ EXCEL-LIKE EDITOR WITH ADD / DELETE / UNDO / REDO + AUTOSAVE
 # ======================================================
 
 elif page == "📝 Въвеждане / редакция":
     st.markdown("### 📝 Въвеждане / редакция на разлики")
     st.caption(
-        "Работа като в Excel - добавяш ред най-отдолу, триеш редове и попълваш колона по колона."
+        "Работа като в Excel - добавяш ред най-отдолу, триеш редове, редактираш клетки и можеш да върнеш промени с Назад / Напред."
     )
 
     if df.empty:
@@ -625,20 +625,112 @@ elif page == "📝 Въвеждане / редакция":
 
     editable_df = prepare_dataframe(editable_df)
 
+    # ======================================================
+    # ✅ INIT UNDO / REDO STATE
+    # ======================================================
+
+    if "undo_stack" not in st.session_state:
+        st.session_state["undo_stack"] = []
+
+    if "redo_stack" not in st.session_state:
+        st.session_state["redo_stack"] = []
+
     if "last_saved_hash" not in st.session_state:
         st.session_state["last_saved_hash"] = hash_dataframe(editable_df)
+
+    if "last_saved_df" not in st.session_state:
+        st.session_state["last_saved_df"] = editable_df.copy()
+
+    if "editor_version" not in st.session_state:
+        st.session_state["editor_version"] = 0
 
     st.markdown(
         """
         <div class="success-box">
-            ✅ Таблицата работи като Excel: можеш да добавяш нови редове, да триеш редове и да редактираш клетки. 
-            Записът става автоматично.
+            ✅ Таблицата работи като Excel: добавяне на редове, изтриване на редове, редакция на клетки, Copy/Paste и автоматичен запис.
         </div>
         """,
         unsafe_allow_html=True
     )
 
     st.write("")
+
+    # ======================================================
+    # ✅ UNDO / REDO BUTTONS
+    # ======================================================
+
+    b1, b2, b3, b4 = st.columns([1, 1, 2, 4])
+
+    with b1:
+        undo_clicked = st.button(
+            "⬅️ Назад",
+            disabled=len(st.session_state["undo_stack"]) == 0,
+            use_container_width=True
+        )
+
+    with b2:
+        redo_clicked = st.button(
+            "➡️ Напред",
+            disabled=len(st.session_state["redo_stack"]) == 0,
+            use_container_width=True
+        )
+
+    with b3:
+        st.caption(
+            f"Undo: {len(st.session_state['undo_stack'])} | Redo: {len(st.session_state['redo_stack'])}"
+        )
+
+    # ======================================================
+    # ✅ UNDO ACTION
+    # ======================================================
+
+    if undo_clicked:
+        if len(st.session_state["undo_stack"]) > 0:
+            current_df = st.session_state["last_saved_df"].copy()
+            previous_df = st.session_state["undo_stack"].pop()
+
+            st.session_state["redo_stack"].append(current_df)
+
+            previous_df = prepare_dataframe(previous_df)
+            save_db(previous_df)
+
+            refresh_data()
+
+            st.session_state["last_saved_df"] = previous_df.copy()
+            st.session_state["last_saved_hash"] = hash_dataframe(previous_df)
+            st.session_state["editor_version"] += 1
+
+            st.toast("⬅️ Върната е последната промяна", icon="⬅️")
+            st.rerun()
+
+    # ======================================================
+    # ✅ REDO ACTION
+    # ======================================================
+
+    if redo_clicked:
+        if len(st.session_state["redo_stack"]) > 0:
+            current_df = st.session_state["last_saved_df"].copy()
+            next_df = st.session_state["redo_stack"].pop()
+
+            st.session_state["undo_stack"].append(current_df)
+
+            next_df = prepare_dataframe(next_df)
+            save_db(next_df)
+
+            refresh_data()
+
+            st.session_state["last_saved_df"] = next_df.copy()
+            st.session_state["last_saved_hash"] = hash_dataframe(next_df)
+            st.session_state["editor_version"] += 1
+
+            st.toast("➡️ Върната е отменената промяна", icon="➡️")
+            st.rerun()
+
+    st.write("")
+
+    # ======================================================
+    # ✅ DATA EDITOR
+    # ======================================================
 
     edited_df = st.data_editor(
         editable_df,
@@ -647,7 +739,7 @@ elif page == "📝 Въвеждане / редакция":
         num_rows="dynamic",
         height=720,
         column_order=COLUMNS,
-        key="differences_excel_editor",
+        key=f"differences_excel_editor_{st.session_state['editor_version']}",
         column_config={
             "Delivery No": st.column_config.TextColumn("Delivery No", width="medium"),
             "Invoice No": st.column_config.TextColumn("Invoice No", width="medium"),
@@ -658,17 +750,21 @@ elif page == "📝 Въвеждане / редакция":
             "QTY": st.column_config.TextColumn("QTY", width="small"),
             "Received QTY": st.column_config.TextColumn("Received QTY", width="small"),
             "Difference": st.column_config.NumberColumn("Difference", width="small"),
+
             "Подал разликата": st.column_config.SelectboxColumn(
                 "Подал разликата",
                 options=["", "Плюс", "Минус"],
                 width="small"
             ),
+
             "Стойност във валутата на доставчика": st.column_config.NumberColumn(
                 "Стойност във валутата на доставчика",
                 width="medium"
             ),
+
             "Стойност (в лева)": st.column_config.TextColumn("Стойност (в лева)", width="medium"),
             "Дата на подаване": st.column_config.TextColumn("Дата на подаване", width="medium"),
+
             "СТАТУС - Попълва се от централата!": st.column_config.SelectboxColumn(
                 "СТАТУС - Попълва се от централата!",
                 options=[
@@ -683,49 +779,66 @@ elif page == "📝 Въвеждане / редакция":
                 ],
                 width="medium"
             ),
+
             "№ документа за разлики": st.column_config.TextColumn("№ документа за разлики", width="medium"),
             "Дата на документа за разлики": st.column_config.TextColumn("Дата на документа за разлики", width="medium"),
+
             "При фактура - дата на приема в Навижън": st.column_config.TextColumn(
                 "При фактура - дата на приема в Навижън",
                 width="medium"
             ),
+
             "Обработени в B01": st.column_config.TextColumn("Обработени в B01", width="medium"),
             "Номер на клетка за минуси": st.column_config.TextColumn("Номер на клетка за минуси", width="medium"),
+
             "Намерени БРОЙКИ (след подаването им)": st.column_config.TextColumn(
                 "Намерени БРОЙКИ (след подаването им)",
                 width="medium"
             ),
+
             "Подадена информация към дост. за намерени бройки след подаването им (ДАТА)": st.column_config.TextColumn(
                 "Подадена информация към дост. за намерени бройки след подаването им (ДАТА)",
                 width="large"
             ),
+
             "Допълнителен коментар": st.column_config.TextColumn("Допълнителен коментар", width="large"),
+
             "ДАТА на намиране в В01 на липсващи артикули или коментар от склада": st.column_config.TextColumn(
                 "ДАТА на намиране в В01 на липсващи артикули или коментар от склада",
                 width="large"
             ),
+
             "дата на прием в Навижън": st.column_config.TextColumn("дата на прием в Навижън", width="medium"),
+
             "working days after goods receipt in navision": st.column_config.TextColumn(
                 "working days after goods receipt in navision",
                 width="medium"
             ),
+
             "БРАНД": st.column_config.TextColumn("БРАНД", width="medium"),
             "РМ": st.column_config.TextColumn("РМ", width="medium"),
             "формула Ники": st.column_config.TextColumn("формула Ники", width="medium"),
+
             "дата на прием от таблицата на Тони": st.column_config.TextColumn(
                 "дата на прием от таблицата на Тони",
                 width="medium"
             ),
+
             "номер на склада - програмата": st.column_config.TextColumn(
                 "номер на склада - програмата",
                 width="medium"
             ),
+
             "системен номер на доставка на склада": st.column_config.TextColumn(
                 "системен номер на доставка на склада",
                 width="medium"
             )
         }
     )
+
+    # ======================================================
+    # ✅ CLEAN / CALCULATE / AUTOSAVE
+    # ======================================================
 
     edited_df = edited_df.copy()
 
@@ -746,14 +859,33 @@ elif page == "📝 Въвеждане / редакция":
 
     current_hash = hash_dataframe(edited_df)
 
+    # ======================================================
+    # ✅ IF CHANGED - PUSH TO UNDO STACK AND SAVE
+    # ======================================================
+
     if current_hash != st.session_state["last_saved_hash"]:
+        previous_df = st.session_state["last_saved_df"].copy()
+
+        # ✅ Пази предишното състояние за Назад
+        st.session_state["undo_stack"].append(previous_df)
+
+        # ✅ След нова промяна историята за Напред се чисти
+        st.session_state["redo_stack"] = []
+
+        # ✅ Пази максимум последните 30 промени
+        if len(st.session_state["undo_stack"]) > 30:
+            st.session_state["undo_stack"] = st.session_state["undo_stack"][-30:]
+
         save_db(edited_df)
         refresh_data()
+
+        st.session_state["last_saved_df"] = edited_df.copy()
         st.session_state["last_saved_hash"] = current_hash
 
         st.toast("✅ Промяната е записана автоматично", icon="✅")
 
     st.caption(
         "Добавяне на ред: използвай празния ред най-отдолу. "
-        "Изтриване на ред: маркирай реда отляво и използвай опцията за изтриване в таблицата."
+        "Изтриване на ред: маркирай реда отляво и използвай опцията за изтриване. "
+        "Назад / Напред: използвай бутоните над таблицата."
     )
