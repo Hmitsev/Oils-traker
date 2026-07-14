@@ -273,7 +273,7 @@ with st.sidebar:
         [
             "📊 Dashboard",
             "📋 Всички разлики",
-            "➕ Нова разлика",
+            "📝 Въвеждане / редакция",
             "🔎 Проверка / търсене"
         ],
         label_visibility="collapsed"
@@ -450,108 +450,103 @@ elif page == "📋 Всички разлики":
 # ✅ NEW DIFFERENCE
 # ======================================================
 
-elif page == "➕ Нова разлика":
-    st.markdown("### ➕ Подаване на нова разлика")
+# ======================================================
+# ✅ EXCEL-LIKE EDITOR
+# ======================================================
 
-    with st.form("new_difference_form", clear_on_submit=False):
-        st.markdown("#### Основна информация")
+elif page == "📝 Въвеждане / редакция":
+    st.markdown("### 📝 Въвеждане / редакция на разлики")
+    st.caption("Работа като в Excel - добавяш нов ред най-отдолу и попълваш колона по колона.")
 
-        c1, c2, c3 = st.columns(3)
+    if df.empty:
+        editable_df = pd.DataFrame(columns=COLUMNS)
+    else:
+        editable_df = df.copy()
 
-        with c1:
-            delivery_no = st.text_input("Delivery No")
-            invoice_no = st.text_input("Invoice No")
-            invoice_date = st.date_input("Invoice Date", value=date.today())
+    st.markdown(
+        """
+        <div class="warning-box">
+            Важно: След като добавиш или редактираш редове, натисни бутона <b>💾 Запази промените</b>.
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
-        with c2:
-            ref_number = st.text_input("Ref. Number SUPPLIER")
-            other_supplier_ref = st.text_input("Other Supplier Ref Num")
-            price = st.text_input("Price", placeholder="пример: 34,02")
+    st.write("")
 
-        with c3:
-            qty = st.number_input("QTY", step=1.0)
-            received_qty = st.number_input("Received QTY", step=1.0)
-            diff_type = st.selectbox("Подал разликата", DIFF_TYPE_OPTIONS)
+    edited_df = st.data_editor(
+        editable_df,
+        use_container_width=True,
+        hide_index=True,
+        num_rows="dynamic",
+        height=650,
+        column_order=COLUMNS,
+        key="differences_editor"
+    )
 
-        difference = calculate_difference(qty, received_qty)
-        supplier_value = calculate_supplier_value(price, difference)
+    c1, c2, c3 = st.columns([1, 1, 4])
 
-        st.markdown("#### Автоматично изчисление")
+    with c1:
+        save_button = st.button("💾 Запази промените")
 
-        r1, r2, r3 = st.columns(3)
+    with c2:
+        refresh_button = st.button("🔄 Презареди")
 
-        with r1:
-            st.metric("Difference", difference)
+    if refresh_button:
+        refresh_data()
+        st.rerun()
 
-        with r2:
-            st.metric("Стойност във валутата", supplier_value)
+    if save_button:
+        edited_df = edited_df.copy()
 
-        with r3:
-            st.metric("Дата на подаване", date.today().strftime("%d.%m.%Y"))
+        for col in COLUMNS:
+            if col not in edited_df.columns:
+                edited_df[col] = ""
 
-        st.markdown("#### Допълнителна информация")
+        edited_df = edited_df[COLUMNS]
 
-        c4, c5, c6 = st.columns(3)
+        # ✅ Автоматично изчисляване на Difference
+        edited_df["Difference"] = edited_df.apply(
+            lambda row: calculate_difference(
+                row.get("QTY", 0),
+                row.get("Received QTY", 0)
+            ),
+            axis=1
+        )
 
-        with c4:
-            status = st.selectbox("СТАТУС", STATUS_OPTIONS)
-            brand = st.text_input("БРАНД")
+        # ✅ Автоматично изчисляване на стойност във валутата на доставчика
+        edited_df["Стойност във валутата на доставчика"] = edited_df.apply(
+            lambda row: calculate_supplier_value(
+                row.get("Price", 0),
+                row.get("Difference", 0)
+            ),
+            axis=1
+        )
 
-        with c5:
-            rm = st.text_input("РМ")
-            warehouse_no = st.text_input("номер на склада - програмата")
+        # ✅ Автоматично попълване на Дата на подаване, ако е празна
+        if "Дата на подаване" in edited_df.columns:
+            edited_df["Дата на подаване"] = edited_df["Дата на подаване"].apply(
+                lambda x: date.today() if pd.isna(x) or str(x).strip() == "" or str(x).strip().lower() == "none" else x
+            )
 
-        with c6:
-            system_delivery_no = st.text_input("системен номер на доставка на склада")
-            b01_cell = st.text_input("Номер на клетка за минуси")
+        # ✅ Автоматично формула Ники: Invoice No | Ref. Number SUPPLIER
+        edited_df["формула Ники"] = edited_df.apply(
+            lambda row: make_niki_formula(
+                row.get("Invoice No", ""),
+                row.get("Ref. Number SUPPLIER", "")
+            ),
+            axis=1
+        )
 
-        comment = st.text_area("Допълнителен коментар")
+        # ✅ Премахване на напълно празни редове
+        edited_df = edited_df.dropna(how="all")
 
-        submitted = st.form_submit_button("💾 Запази новата разлика")
+        # ✅ Запис в Excel файла
+        save_excel(edited_df)
+        refresh_data()
 
-        if submitted:
-            niki_formula = make_niki_formula(invoice_no, ref_number)
-
-            new_row = {
-                "Delivery No": delivery_no,
-                "Invoice No": invoice_no,
-                "Invoice Date": invoice_date,
-                "Ref. Number SUPPLIER": ref_number,
-                "Other Supplier Ref Num": other_supplier_ref,
-                "Price": price,
-                "QTY": qty,
-                "Received QTY": received_qty,
-                "Difference": difference,
-                "Подал разликата": diff_type,
-                "Стойност във валутата на доставчика": supplier_value,
-                "Стойност (в лева)": "",
-                "Дата на подаване": date.today(),
-                "СТАТУС - Попълва се от централата!": status,
-                "№ документа за разлики": "",
-                "Дата на документа за разлики": "",
-                "При фактура - дата на приема в Навижън": "",
-                "Обработени в B01": "",
-                "Номер на клетка за минуси": b01_cell,
-                "Намерени БРОЙКИ (след подаването им)": "",
-                "Подадена информация към дост. за намерени бройки след подаването им (ДАТА)": "",
-                "Допълнителен коментар": comment,
-                "ДАТА на намиране в В01 на липсващи артикули или коментар от склада": "",
-                "дата на прием в Навижън": "",
-                "working days after goods receipt in navision": "",
-                "БРАНД": brand,
-                "РМ": rm,
-                "формула Ники": niki_formula,
-                "дата на прием от таблицата на Тони": "",
-                "номер на склада - програмата": warehouse_no,
-                "системен номер на доставка на склада": system_delivery_no
-            }
-
-            df_new = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
-            save_excel(df_new)
-            refresh_data()
-
-            st.success("✅ Новата разлика е записана успешно.")
-            st.info(f"Формула Ники: {niki_formula}")
+        st.success("✅ Промените са записани успешно в Excel файла.")
+        st.rerun()
 
 # ======================================================
 # ✅ SEARCH
