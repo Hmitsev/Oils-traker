@@ -609,13 +609,13 @@ elif page == "📋 Всички разлики":
     st.markdown('</div>', unsafe_allow_html=True)
 
 # ======================================================
-# ✅ EXCEL-LIKE EDITOR WITH AUTOSAVE
+# ✅ EXCEL-LIKE EDITOR WITH ADD / DELETE ROWS + AUTOSAVE
 # ======================================================
 
 elif page == "📝 Въвеждане / редакция":
     st.markdown("### 📝 Въвеждане / редакция на разлики")
     st.caption(
-        "Работа като в Excel - добавяш нов ред най-отдолу и попълваш колона по колона."
+        "Работа като в Excel - добавяш ред най-отдолу, триеш редове и попълваш колона по колона."
     )
 
     if df.empty:
@@ -631,7 +631,8 @@ elif page == "📝 Въвеждане / редакция":
     st.markdown(
         """
         <div class="success-box">
-            ✅ Автоматичен запис: всяка промяна в таблицата се записва директно в SQLite базата.
+            ✅ Таблицата работи като Excel: можеш да добавяш нови редове, да триеш редове и да редактираш клетки. 
+            Записът става автоматично.
         </div>
         """,
         unsafe_allow_html=True
@@ -642,11 +643,88 @@ elif page == "📝 Въвеждане / редакция":
     edited_df = st.data_editor(
         editable_df,
         use_container_width=True,
-        hide_index=True,
+        hide_index=False,
         num_rows="dynamic",
-        height=680,
+        height=720,
         column_order=COLUMNS,
-        key="differences_editor"
+        key="differences_excel_editor",
+        column_config={
+            "Delivery No": st.column_config.TextColumn("Delivery No", width="medium"),
+            "Invoice No": st.column_config.TextColumn("Invoice No", width="medium"),
+            "Invoice Date": st.column_config.TextColumn("Invoice Date", width="medium"),
+            "Ref. Number SUPPLIER": st.column_config.TextColumn("Ref. Number SUPPLIER", width="medium"),
+            "Other Supplier Ref Num": st.column_config.TextColumn("Other Supplier Ref Num", width="medium"),
+            "Price": st.column_config.TextColumn("Price", width="small"),
+            "QTY": st.column_config.TextColumn("QTY", width="small"),
+            "Received QTY": st.column_config.TextColumn("Received QTY", width="small"),
+            "Difference": st.column_config.NumberColumn("Difference", width="small"),
+            "Подал разликата": st.column_config.SelectboxColumn(
+                "Подал разликата",
+                options=["", "Плюс", "Минус"],
+                width="small"
+            ),
+            "Стойност във валутата на доставчика": st.column_config.NumberColumn(
+                "Стойност във валутата на доставчика",
+                width="medium"
+            ),
+            "Стойност (в лева)": st.column_config.TextColumn("Стойност (в лева)", width="medium"),
+            "Дата на подаване": st.column_config.TextColumn("Дата на подаване", width="medium"),
+            "СТАТУС - Попълва се от централата!": st.column_config.SelectboxColumn(
+                "СТАТУС - Попълва се от централата!",
+                options=[
+                    "",
+                    "Нова",
+                    "Подадена",
+                    "Очаква отговор",
+                    "Получено КИ",
+                    "Отказани",
+                    "МАСЛА - обработва се от РМ",
+                    "Затворена"
+                ],
+                width="medium"
+            ),
+            "№ документа за разлики": st.column_config.TextColumn("№ документа за разлики", width="medium"),
+            "Дата на документа за разлики": st.column_config.TextColumn("Дата на документа за разлики", width="medium"),
+            "При фактура - дата на приема в Навижън": st.column_config.TextColumn(
+                "При фактура - дата на приема в Навижън",
+                width="medium"
+            ),
+            "Обработени в B01": st.column_config.TextColumn("Обработени в B01", width="medium"),
+            "Номер на клетка за минуси": st.column_config.TextColumn("Номер на клетка за минуси", width="medium"),
+            "Намерени БРОЙКИ (след подаването им)": st.column_config.TextColumn(
+                "Намерени БРОЙКИ (след подаването им)",
+                width="medium"
+            ),
+            "Подадена информация към дост. за намерени бройки след подаването им (ДАТА)": st.column_config.TextColumn(
+                "Подадена информация към дост. за намерени бройки след подаването им (ДАТА)",
+                width="large"
+            ),
+            "Допълнителен коментар": st.column_config.TextColumn("Допълнителен коментар", width="large"),
+            "ДАТА на намиране в В01 на липсващи артикули или коментар от склада": st.column_config.TextColumn(
+                "ДАТА на намиране в В01 на липсващи артикули или коментар от склада",
+                width="large"
+            ),
+            "дата на прием в Навижън": st.column_config.TextColumn("дата на прием в Навижън", width="medium"),
+            "working days after goods receipt in navision": st.column_config.TextColumn(
+                "working days after goods receipt in navision",
+                width="medium"
+            ),
+            "БРАНД": st.column_config.TextColumn("БРАНД", width="medium"),
+            "РМ": st.column_config.TextColumn("РМ", width="medium"),
+            "формула Ники": st.column_config.TextColumn("формула Ники", width="medium"),
+            "дата на прием от таблицата на Тони": st.column_config.TextColumn(
+                "дата на прием от таблицата на Тони",
+                width="medium"
+            ),
+            "номер на склада - програмата": st.column_config.TextColumn(
+                "номер на склада - програмата",
+                width="medium"
+            ),
+            "системен номер на доставка на склада": st.column_config.TextColumn(
+                "системен номер на доставка на склада",
+                width="medium"
+            )
+        }
     )
 
     edited_df = edited_df.copy()
@@ -656,8 +734,14 @@ elif page == "📝 Въвеждане / редакция":
             edited_df[col] = ""
 
     edited_df = edited_df[COLUMNS]
+
+    # ✅ Премахва напълно празни редове
     edited_df = remove_empty_rows(edited_df)
+
+    # ✅ Автоматични формули
     edited_df = apply_auto_calculations(edited_df)
+
+    # ✅ Подрежда колоните пак в правилния ред
     edited_df = prepare_dataframe(edited_df)
 
     current_hash = hash_dataframe(edited_df)
@@ -669,37 +753,7 @@ elif page == "📝 Въвеждане / редакция":
 
         st.toast("✅ Промяната е записана автоматично", icon="✅")
 
-    st.caption("Последният запис се извършва автоматично след промяна в таблицата.")
-
-# ======================================================
-# ✅ SEARCH
-# ======================================================
-
-elif page == "🔎 Проверка / търсене":
-    st.markdown("### 🔎 Проверка за вече подадена разлика")
-
-    search_value = st.text_input(
-        "Въведи Invoice No, Ref. Number SUPPLIER, Delivery No или формула Ники"
+    st.caption(
+        "Добавяне на ред: използвай празния ред най-отдолу. "
+        "Изтриване на ред: маркирай реда отляво и използвай опцията за изтриване в таблицата."
     )
-
-    if search_value:
-        result = df[
-            df.astype(str).apply(
-                lambda row: row.str.contains(
-                    search_value,
-                    case=False,
-                    na=False
-                ).any(),
-                axis=1
-            )
-        ]
-
-        if result.empty:
-            st.warning("Няма намерен запис.")
-        else:
-            st.success(f"Намерени записи: {len(result)}")
-            st.dataframe(
-                result,
-                use_container_width=True,
-                hide_index=True
-            )
