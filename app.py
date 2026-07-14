@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import sqlite3
 from pathlib import Path
 from datetime import date, datetime
 
@@ -14,6 +15,7 @@ st.set_page_config(
 )
 
 EXCEL_PATH = Path("Sharepoint_Разлики_2026.xlsx")
+DB_PATH = Path("differences.sqlite")
 SHEET_NAME = "Разлики"
 
 # ======================================================
@@ -52,23 +54,6 @@ COLUMNS = [
     "дата на прием от таблицата на Тони",
     "номер на склада - програмата",
     "системен номер на доставка на склада"
-]
-
-STATUS_OPTIONS = [
-    "",
-    "Нова",
-    "Подадена",
-    "Очаква отговор",
-    "Получено КИ",
-    "Отказани",
-    "МАСЛА - обработва се от РМ",
-    "Затворена"
-]
-
-DIFF_TYPE_OPTIONS = [
-    "",
-    "Плюс",
-    "Минус"
 ]
 
 # ======================================================
@@ -148,22 +133,6 @@ st.markdown(
             box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
         }
 
-        .stButton > button {
-            border-radius: 14px;
-            height: 45px;
-            font-weight: 700;
-            background: linear-gradient(135deg, #2563eb, #1d4ed8);
-            color: white;
-            border: none;
-            box-shadow: 0 8px 16px rgba(37, 99, 235, 0.25);
-        }
-
-        .stButton > button:hover {
-            background: linear-gradient(135deg, #1d4ed8, #1e40af);
-            color: white;
-            border: none;
-        }
-
         section[data-testid="stSidebar"] {
             background: #111827;
         }
@@ -181,11 +150,23 @@ st.markdown(
 # ======================================================
 
 def normalize_number(value):
-    if value is None or value == "":
+    if value is None:
+        return 0.0
+
+    if pd.isna(value):
         return 0.0
 
     if isinstance(value, str):
-        value = value.replace(" ", "").replace(",", ".")
+        value = (
+            value
+            .replace("лв.", "")
+            .replace(" ", "")
+            .replace(",", ".")
+            .strip()
+        )
+
+    if value == "":
+        return 0.0
 
     try:
         return float(value)
@@ -206,23 +187,30 @@ def calculate_supplier_value(price, difference):
 
 
 def make_niki_formula(invoice_no, ref_number):
-    invoice_clean = str(invoice_no).strip().replace("/", "").replace("-", "").replace(" ", "")
-    ref_clean = str(ref_number).strip().replace("/", "").replace("-", "").replace(" ", "")
-    if invoice_clean and ref_clean:
+    invoice_clean = (
+        str(invoice_no)
+        .strip()
+        .replace("/", "")
+        .replace("-", "")
+        .replace(" ", "")
+    )
+
+    ref_clean = (
+        str(ref_number)
+        .strip()
+        .replace("/", "")
+        .replace("-", "")
+        .replace(" ", "")
+    )
+
+    if invoice_clean and invoice_clean.lower() not in ["none", "nan"] and ref_clean and ref_clean.lower() not in ["none", "nan"]:
         return f"{invoice_clean}|{ref_clean}"
+
     return ""
 
 
-@st.cache_data(show_spinner=False)
-def load_excel():
-    if not EXCEL_PATH.exists():
-        df_empty = pd.DataFrame(columns=COLUMNS)
-        return df_empty
-
-    try:
-        df = pd.read_excel(EXCEL_PATH, sheet_name=SHEET_NAME, engine="openpyxl")
-    except Exception:
-        df = pd.read_excel(EXCEL_PATH, engine="openpyxl")
+def prepare_dataframe(df):
+    df = df.copy()
 
     df.columns = [str(c).strip() for c in df.columns]
 
@@ -231,33 +219,147 @@ def load_excel():
             df[col] = ""
 
     df = df[COLUMNS]
+    df = df.fillna("")
 
     return df
 
 
-def save_excel(df):
-    EXCEL_PATH.parent.mkdir(parents=True, exist_ok=True)
+def remove_empty_rows(df):
+    df = df.copy()
 
-    with pd.ExcelWriter(EXCEL_PATH, engine="openpyxl", mode="w") as writer:
-        df.to_excel(writer, sheet_name=SHEET_NAME, index=False)
+    df = df[
+        df.astype(str).apply(
+            lambda row: any(
+                str(x).strip().lower() not in ["", "none", "nan", "nat"]
+                for x in row
+            ),
+            axis=1
+        )
+    ]
+
+    return df
+
+
+def apply_auto_calculations(df):
+    df = df.copy()
+
+    for col in COLUMNS:
+        if col not in df.columns:
+            df[col] = ""
+
+    df = df[COLUMNS]
+
+    # ✅ Difference = Received QTY - QTY
+    df["Difference"] = df.apply(
+        lambda row: calculate_difference(
+            row.get("QTY", 0),
+            row.get("Received QTY", 0)
+        ),
+        axis=1
+    )
+
+    # ✅ Стойност във валутата = Price * Difference
+    df["Стойност във валутата на доставчика"] = df.apply(
+        lambda row: calculate_supplier_value(
+            row.get("Price", 0),
+            row.get("Difference", 0)
+        ),
+        axis=1
+    )
+
+    # ✅ Дата на подаване - ако е празна
+    df["Дата на подаване"] = df["Дата на подаване"].apply(
+        lambda x: date.today().strftime("%Y-%m-%d")
+        if pd.isna(x) or str(x).strip().lower() in ["", "none", "nan", "nat"]
+        else x
+    )
+
+    # ✅ Формула Ники
+    df["формула Ники"] = df.apply(
+        lambda row: make_niki_formula(
+            row.get("Invoice No", ""),
+            row.get("Ref. Number SUPPLIER", "")
+        ),
+        axis=1
+    )
+
+    return df
+
+
+def hash_dataframe(df):
+    try:
+        df_string = df.astype(str)
+        return str(pd.util.hash_pandas_object(df_string, index=True).sum())
+    except Exception:
+        return str(datetime.now())
+
+
+# ======================================================
+# ✅ SQLITE DATABASE
+# ======================================================
+
+def get_connection():
+    return sqlite3.connect(DB_PATH)
+
+
+def save_db(df):
+    df = prepare_dataframe(df)
+    df = remove_empty_rows(df)
+
+    conn = get_connection()
+    df.to_sql("differences", conn, if_exists="replace", index=False)
+    conn.close()
+
+
+@st.cache_data(show_spinner=False)
+def load_data():
+    try:
+        # ✅ Ако вече има SQLite база - чете от нея
+        if DB_PATH.exists():
+            conn = get_connection()
+            df = pd.read_sql_query("SELECT * FROM differences", conn)
+            conn.close()
+
+            df = prepare_dataframe(df)
+            return df
+
+        # ✅ Ако няма SQLite база, но има Excel - мигрира Excel към SQLite
+        if EXCEL_PATH.exists():
+            try:
+                df = pd.read_excel(
+                    EXCEL_PATH,
+                    sheet_name=SHEET_NAME,
+                    engine="openpyxl"
+                )
+            except Exception:
+                df = pd.read_excel(
+                    EXCEL_PATH,
+                    engine="openpyxl"
+                )
+
+            df = prepare_dataframe(df)
+            df = remove_empty_rows(df)
+            save_db(df)
+
+            return df
+
+        # ✅ Ако няма нищо
+        return pd.DataFrame(columns=COLUMNS)
+
+    except Exception as e:
+        st.error(f"Грешка при зареждане на данните: {e}")
+        return pd.DataFrame(columns=COLUMNS)
 
 
 def refresh_data():
     st.cache_data.clear()
 
 
-def format_money(value):
-    try:
-        return f"{float(value):,.2f}".replace(",", " ")
-    except Exception:
-        return ""
-
-
 # ======================================================
 # ✅ LOAD DATA
 # ======================================================
 
-df = load_excel()
+df = load_data()
 
 # ======================================================
 # ✅ SIDEBAR
@@ -281,19 +383,25 @@ with st.sidebar:
 
     st.divider()
 
-    st.caption("Файл:")
-    st.write(str(EXCEL_PATH))
+    st.caption("База данни:")
+    st.write(str(DB_PATH))
 
-    if EXCEL_PATH.exists():
-        st.success("Excel файлът е намерен")
+    if DB_PATH.exists():
+        st.success("SQLite базата е активна")
+    elif EXCEL_PATH.exists():
+        st.info("Excel файлът е намерен - ще бъде мигриран")
     else:
-        st.warning("Excel файлът липсва")
+        st.warning("Няма намерена база или Excel файл")
 
 # ======================================================
 # ✅ HEADER
 # ======================================================
 
-st.markdown('<div class="main-title">Differences Suppliers</div>', unsafe_allow_html=True)
+st.markdown(
+    '<div class="main-title">Differences Suppliers</div>',
+    unsafe_allow_html=True
+)
+
 st.markdown(
     '<div class="subtitle">Приложение за подаване и проследяване на разлики към доставчици</div>',
     unsafe_allow_html=True
@@ -312,14 +420,34 @@ if page == "📊 Dashboard":
     total_bgn = 0
 
     if not df.empty:
-        plus_count = (df["Подал разликата"].astype(str).str.lower() == "плюс").sum()
-        minus_count = (df["Подал разликата"].astype(str).str.lower() == "минус").sum()
+        plus_count = (
+            df["Подал разликата"]
+            .astype(str)
+            .str.lower()
+            .eq("плюс")
+            .sum()
+        )
+
+        minus_count = (
+            df["Подал разликата"]
+            .astype(str)
+            .str.lower()
+            .eq("минус")
+            .sum()
+        )
 
         status_col = "СТАТУС - Попълва се от централата!"
-        open_count = df[status_col].astype(str).isin(["", "Нова", "Подадена", "Очаква отговор"]).sum()
+
+        open_count = (
+            df[status_col]
+            .astype(str)
+            .isin(["", "Нова", "Подадена", "Очаква отговор"])
+            .sum()
+        )
 
         total_bgn = pd.to_numeric(
-            df["Стойност (в лева)"].astype(str)
+            df["Стойност (в лева)"]
+            .astype(str)
             .str.replace("лв.", "", regex=False)
             .str.replace(" ", "", regex=False)
             .str.replace(",", ".", regex=False),
@@ -372,11 +500,17 @@ if page == "📊 Dashboard":
             unsafe_allow_html=True
         )
 
+    st.write("")
     st.markdown("### Последни 20 записа")
+
     if df.empty:
         st.info("Все още няма данни.")
     else:
-        st.dataframe(df.tail(20), use_container_width=True, hide_index=True)
+        st.dataframe(
+            df.tail(20),
+            use_container_width=True,
+            hide_index=True
+        )
 
 # ======================================================
 # ✅ ALL DIFFERENCES
@@ -388,34 +522,62 @@ elif page == "📋 Всички разлики":
     f1, f2, f3, f4 = st.columns(4)
 
     with f1:
-        search_text = st.text_input("Търсене", placeholder="артикул, фактура, доставка...")
+        search_text = st.text_input(
+            "Търсене",
+            placeholder="артикул, фактура, доставка..."
+        )
 
     with f2:
         status_filter = st.selectbox(
             "Статус",
-            ["Всички"] + sorted([x for x in df["СТАТУС - Попълва се от централата!"].dropna().astype(str).unique() if x.strip()])
-            if not df.empty else ["Всички"]
+            ["Всички"] + sorted(
+                [
+                    x for x in df["СТАТУС - Попълва се от централата!"]
+                    .dropna()
+                    .astype(str)
+                    .unique()
+                    if x.strip()
+                ]
+            ) if not df.empty else ["Всички"]
         )
 
     with f3:
         brand_filter = st.selectbox(
             "Бранд",
-            ["Всички"] + sorted([x for x in df["БРАНД"].dropna().astype(str).unique() if x.strip()])
-            if not df.empty else ["Всички"]
+            ["Всички"] + sorted(
+                [
+                    x for x in df["БРАНД"]
+                    .dropna()
+                    .astype(str)
+                    .unique()
+                    if x.strip()
+                ]
+            ) if not df.empty else ["Всички"]
         )
 
     with f4:
         rm_filter = st.selectbox(
             "РМ",
-            ["Всички"] + sorted([x for x in df["РМ"].dropna().astype(str).unique() if x.strip()])
-            if not df.empty else ["Всички"]
+            ["Всички"] + sorted(
+                [
+                    x for x in df["РМ"]
+                    .dropna()
+                    .astype(str)
+                    .unique()
+                    if x.strip()
+                ]
+            ) if not df.empty else ["Всички"]
         )
 
     filtered_df = df.copy()
 
     if search_text:
         mask = filtered_df.astype(str).apply(
-            lambda row: row.str.contains(search_text, case=False, na=False).any(),
+            lambda row: row.str.contains(
+                search_text,
+                case=False,
+                na=False
+            ).any(),
             axis=1
         )
         filtered_df = filtered_df[mask]
@@ -447,26 +609,29 @@ elif page == "📋 Всички разлики":
     st.markdown('</div>', unsafe_allow_html=True)
 
 # ======================================================
-# ✅ NEW DIFFERENCE
-# ======================================================
-
-# ======================================================
-# ✅ EXCEL-LIKE EDITOR
+# ✅ EXCEL-LIKE EDITOR WITH AUTOSAVE
 # ======================================================
 
 elif page == "📝 Въвеждане / редакция":
     st.markdown("### 📝 Въвеждане / редакция на разлики")
-    st.caption("Работа като в Excel - добавяш нов ред най-отдолу и попълваш колона по колона.")
+    st.caption(
+        "Работа като в Excel - добавяш нов ред най-отдолу и попълваш колона по колона."
+    )
 
     if df.empty:
         editable_df = pd.DataFrame(columns=COLUMNS)
     else:
         editable_df = df.copy()
 
+    editable_df = prepare_dataframe(editable_df)
+
+    if "last_saved_hash" not in st.session_state:
+        st.session_state["last_saved_hash"] = hash_dataframe(editable_df)
+
     st.markdown(
         """
-        <div class="warning-box">
-            Важно: След като добавиш или редактираш редове, натисни бутона <b>💾 Запази промените</b>.
+        <div class="success-box">
+            ✅ Автоматичен запис: всяка промяна в таблицата се записва директно в SQLite базата.
         </div>
         """,
         unsafe_allow_html=True
@@ -479,74 +644,32 @@ elif page == "📝 Въвеждане / редакция":
         use_container_width=True,
         hide_index=True,
         num_rows="dynamic",
-        height=650,
+        height=680,
         column_order=COLUMNS,
         key="differences_editor"
     )
 
-    c1, c2, c3 = st.columns([1, 1, 4])
+    edited_df = edited_df.copy()
 
-    with c1:
-        save_button = st.button("💾 Запази промените")
+    for col in COLUMNS:
+        if col not in edited_df.columns:
+            edited_df[col] = ""
 
-    with c2:
-        refresh_button = st.button("🔄 Презареди")
+    edited_df = edited_df[COLUMNS]
+    edited_df = remove_empty_rows(edited_df)
+    edited_df = apply_auto_calculations(edited_df)
+    edited_df = prepare_dataframe(edited_df)
 
-    if refresh_button:
+    current_hash = hash_dataframe(edited_df)
+
+    if current_hash != st.session_state["last_saved_hash"]:
+        save_db(edited_df)
         refresh_data()
-        st.rerun()
+        st.session_state["last_saved_hash"] = current_hash
 
-    if save_button:
-        edited_df = edited_df.copy()
+        st.toast("✅ Промяната е записана автоматично", icon="✅")
 
-        for col in COLUMNS:
-            if col not in edited_df.columns:
-                edited_df[col] = ""
-
-        edited_df = edited_df[COLUMNS]
-
-        # ✅ Автоматично изчисляване на Difference
-        edited_df["Difference"] = edited_df.apply(
-            lambda row: calculate_difference(
-                row.get("QTY", 0),
-                row.get("Received QTY", 0)
-            ),
-            axis=1
-        )
-
-        # ✅ Автоматично изчисляване на стойност във валутата на доставчика
-        edited_df["Стойност във валутата на доставчика"] = edited_df.apply(
-            lambda row: calculate_supplier_value(
-                row.get("Price", 0),
-                row.get("Difference", 0)
-            ),
-            axis=1
-        )
-
-        # ✅ Автоматично попълване на Дата на подаване, ако е празна
-        if "Дата на подаване" in edited_df.columns:
-            edited_df["Дата на подаване"] = edited_df["Дата на подаване"].apply(
-                lambda x: date.today() if pd.isna(x) or str(x).strip() == "" or str(x).strip().lower() == "none" else x
-            )
-
-        # ✅ Автоматично формула Ники: Invoice No | Ref. Number SUPPLIER
-        edited_df["формула Ники"] = edited_df.apply(
-            lambda row: make_niki_formula(
-                row.get("Invoice No", ""),
-                row.get("Ref. Number SUPPLIER", "")
-            ),
-            axis=1
-        )
-
-        # ✅ Премахване на напълно празни редове
-        edited_df = edited_df.dropna(how="all")
-
-        # ✅ Запис в Excel файла
-        save_excel(edited_df)
-        refresh_data()
-
-        st.success("✅ Промените са записани успешно в Excel файла.")
-        st.rerun()
+    st.caption("Последният запис се извършва автоматично след промяна в таблицата.")
 
 # ======================================================
 # ✅ SEARCH
@@ -562,7 +685,11 @@ elif page == "🔎 Проверка / търсене":
     if search_value:
         result = df[
             df.astype(str).apply(
-                lambda row: row.str.contains(search_value, case=False, na=False).any(),
+                lambda row: row.str.contains(
+                    search_value,
+                    case=False,
+                    na=False
+                ).any(),
                 axis=1
             )
         ]
@@ -571,4 +698,8 @@ elif page == "🔎 Проверка / търсене":
             st.warning("Няма намерен запис.")
         else:
             st.success(f"Намерени записи: {len(result)}")
-            st.dataframe(result, use_container_width=True, hide_index=True)
+            st.dataframe(
+                result,
+                use_container_width=True,
+                hide_index=True
+            )
