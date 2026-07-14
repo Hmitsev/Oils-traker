@@ -13,7 +13,7 @@ st.set_page_config(
     layout="wide"
 )
 
-EXCEL_PATH = Path("data/Sharepoint_Разлики_2026.xlsx")
+EXCEL_PATH = Path("Sharepoint_Разлики_2026.xlsx")
 SHEET_NAME = "Разлики"
 
 # ======================================================
