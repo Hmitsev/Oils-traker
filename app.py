@@ -916,7 +916,7 @@ if st.session_state.page == "Разлики":
         view_df,
         use_container_width=True,
         hide_index=True,
-        num_rows="fixed",
+        num_rows="dynamic",
         column_config={
             "СТАТУС - Попълва се от централата!":
             st.column_config.SelectboxColumn(
