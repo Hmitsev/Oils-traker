@@ -490,38 +490,8 @@ def build_master_database_from_excels():
     master = pd.concat(all_rows, ignore_index=True)
     master = clean_dataframe_as_text(master)
 
-    master["_key_internal"] = master["Вътрешен номер"].map(normalize_key)
-    master["_key_active"] = master["Активен номер"].map(normalize_key)
-    master["_dedupe_key"] = master["_key_internal"] + "||" + master["_key_active"]
-
-    master["_has_price"] = master["Price"].astype(str).str.strip().ne("").astype(int)
-    master["_has_ref"] = master["Ref. Number SUPPLIER"].astype(str).str.strip().ne("").astype(int)
-
-    master["source_priority"] = pd.to_numeric(
-        master["source_priority"],
-        errors="coerce"
-    ).fillna(9)
-
-    master = master.sort_values(
-        by=["source_priority", "_has_price", "_has_ref"],
-        ascending=[True, False, False]
-    )
-
-    master = master.drop_duplicates(
-        subset=["_dedupe_key"],
-        keep="first"
-    )
-
-    master = master.drop(
-        columns=[
-            "_key_internal",
-            "_key_active",
-            "_dedupe_key",
-            "_has_price",
-            "_has_ref",
-        ],
-        errors="ignore"
-    )
+    # НЕ махаме дублиращите записи.
+    # Искаме целият master да остане.
 
     master = master.reset_index(drop=True)
 
@@ -624,11 +594,11 @@ def make_master_lookup(master_df):
             "Price": clean_text(row.get("Price", "")),
         }
 
-        if internal_key and internal_key not in lookup_internal:
-            lookup_internal[internal_key] = record
+        if internal_key:
+    lookup_internal[internal_key] = record
 
-        if active_key and active_key not in lookup_active:
-            lookup_active[active_key] = record
+if active_key:
+    lookup_active[active_key] = record
 
     return lookup_internal, lookup_active
 
