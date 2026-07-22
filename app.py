@@ -708,45 +708,44 @@ def read_new_claims_upload(uploaded_file):
     result["Received QTY"] = (
         qty_num + diff_num
     )
-# ==================================================
-# Стойност тотал от Нави = Price × ABS(Difference)
-# ==================================================
+        # ==================================================
+    # Стойност тотал от Нави = Price × ABS(Difference)
+    # ==================================================
 
-price_num = pd.to_numeric(
-    result["Price"].astype(str).str.replace(",", ".", regex=False),
-    errors="coerce"
-).fillna(0)
+    price_num = pd.to_numeric(
+        result["Price"].astype(str).str.replace(",", ".", regex=False),
+        errors="coerce"
+    ).fillna(0)
 
-difference_abs = pd.to_numeric(
-    result["Difference"].astype(str).str.replace(",", ".", regex=False),
-    errors="coerce"
-).fillna(0).abs()
+    difference_abs = pd.to_numeric(
+        result["Difference"].astype(str).str.replace(",", ".", regex=False),
+        errors="coerce"
+    ).fillna(0).abs()
 
-result["Стойност тотал от Нави"] = (
-    price_num * difference_abs
-).round(2)
+    result["Стойност тотал от Нави"] = (
+        price_num * difference_abs
+    ).round(2)
 
-result["Дата на подаване"] = datetime.now().strftime("%d.%m.%Y")
+    result["Дата на подаване"] = datetime.now().strftime("%d.%m.%Y")
 
-result["СТАТУС - Попълва се от централата!"] = "Нова"
+    result["СТАТУС - Попълва се от централата!"] = "Нова"
 
-result["№ документа за разлики"] = ""
+    result["№ документа за разлики"] = ""
 
-result["Дата на обработка на докумнет"] = ""
+    result["Дата на обработка на докумнет"] = ""
 
-result["Допълнителен коментар"] = ""
+    result["Допълнителен коментар"] = ""
 
-result = result[DIFFERENCES_COLUMNS]
+    result = result[DIFFERENCES_COLUMNS]
 
-result = clean_dataframe_as_text(result)
+    result = clean_dataframe_as_text(result)
 
-result = result[
-    (result["Вътрешен номер"].astype(str).str.strip() != "") |
-    (result["Активен номер"].astype(str).str.strip() != "")
-]
+    result = result[
+        (result["Вътрешен номер"].astype(str).str.strip() != "") |
+        (result["Активен номер"].astype(str).str.strip() != "")
+    ]
 
-return result.reset_index(drop=True)
-
+    return result.reset_index(drop=True)
 # ======================================================
 # STATE
 # ======================================================
