@@ -648,7 +648,7 @@ def read_new_claims_upload(uploaded_file):
 
     # Визуална колона за плюс/минус
     result["Diff Status"] = result["Difference"].apply(
-        lambda x: "🔴" if str(x).strip().startswith("-") else "🟢"
+        lambda x: "🔴 минус" if str(x).strip().startswith("-") else "🟢 плюс"
     )
 
     # ==================================================
