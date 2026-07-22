@@ -709,12 +709,21 @@ def read_new_claims_upload(uploaded_file):
 if "page" not in st.session_state:
     st.session_state.page = "Разлики"
 
-
 if "differences_df" not in st.session_state:
     st.session_state.differences_df = load_differences_database()
 
 if "preview_claims_df" not in st.session_state:
-    st.session_state.preview_claims_df = pd.DataFrame(columns=DIFFERENCES_COLUMNS)
+    st.session_state.preview_claims_df = pd.DataFrame(
+        columns=DIFFERENCES_COLUMNS
+    )
+
+# UNDO / REDO
+
+if "undo_stack" not in st.session_state:
+    st.session_state.undo_stack = []
+
+if "redo_stack" not in st.session_state:
+    st.session_state.redo_stack = []
 
 
 # ======================================================
@@ -770,7 +779,6 @@ with m1:
     if st.button("📋 Разлики"):
         st.session_state.page = "Разлики"
 
-
 with m3:
     if st.button("➕ New Claims"):
         st.session_state.page = "New Claims"
@@ -819,7 +827,7 @@ if st.session_state.page == "Разлики":
             differences_df["СТАТУС - Попълва се от централата!"]
             .astype(str)
             .str.lower()
-            .isin(["", "нова", "Подадена", "чака отговор", "обработва се"])
+            .isin(["", "нова", "подадена", "чака отговор", "обработва се"])
             .sum()
         )
     else:
@@ -836,7 +844,8 @@ if st.session_state.page == "Разлики":
         """
         <div class="info-box">
         Основният прозорец пази колоните в същия ред като структурата.
-        Можеш да редактираш директно таблицата. Промените се записват автоматично, когато няма активен филтър.
+        Можеш да редактираш директно таблицата.
+        Включени са Undo / Redo.
         </div>
         """,
         unsafe_allow_html=True
@@ -850,6 +859,7 @@ if st.session_state.page == "Разлики":
     view_df = differences_df.copy()
 
     if search.strip():
+
         search_value = search.strip().lower()
 
         mask = view_df.apply(
@@ -861,6 +871,46 @@ if st.session_state.page == "Разлики":
         )
 
         view_df = view_df[mask]
+
+    u1, u2, u3 = st.columns([1, 1, 8])
+
+    with u1:
+        if st.button("⬅️ Undo"):
+
+            if st.session_state.undo_stack:
+
+                st.session_state.redo_stack.append(
+                    st.session_state.differences_df.copy()
+                )
+
+                st.session_state.differences_df = (
+                    st.session_state.undo_stack.pop()
+                )
+
+                save_differences_database(
+                    st.session_state.differences_df
+                )
+
+                st.rerun()
+
+    with u2:
+        if st.button("➡️ Redo"):
+
+            if st.session_state.redo_stack:
+
+                st.session_state.undo_stack.append(
+                    st.session_state.differences_df.copy()
+                )
+
+                st.session_state.differences_df = (
+                    st.session_state.redo_stack.pop()
+                )
+
+                save_differences_database(
+                    st.session_state.differences_df
+                )
+
+                st.rerun()
 
     edited_df = st.data_editor(
         view_df,
@@ -879,17 +929,30 @@ if st.session_state.page == "Разлики":
     )
 
     if search.strip():
+
         st.warning(
-            "Редактираш филтриран изглед. За реално записване на масови промени изчисти търсенето."
+            "Редактираш филтриран изглед. За реално записване изчисти търсенето."
         )
+
     else:
 
         old_hash = dataframe_hash(differences_df)
         new_hash = dataframe_hash(edited_df)
 
         if old_hash != new_hash:
+
+            st.session_state.undo_stack.append(
+                differences_df.copy()
+            )
+
+            st.session_state.redo_stack = []
+
             st.session_state.differences_df = edited_df.copy()
-            save_differences_database(edited_df)
+
+            save_differences_database(
+                st.session_state.differences_df
+            )
+
             st.success("Промените са записани автоматично.")
 
     c1, c2, c3 = st.columns([1, 1, 5])
