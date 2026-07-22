@@ -597,7 +597,7 @@ def make_master_lookup(master_df):
         if internal_key:
     lookup_internal[internal_key] = record
 
-if active_key:
+        if active_key:
     lookup_active[active_key] = record
 
     return lookup_internal, lookup_active
