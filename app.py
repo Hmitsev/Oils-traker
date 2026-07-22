@@ -848,20 +848,33 @@ if st.session_state.page == "Разлики":
         )
         view_df = view_df[mask]
 
-    edited_df = st.data_editor(
-        view_df,
-        use_container_width=True,
-        hide_index=True,
-        num_rows="dynamic",
-        column_config={
-            "СТАТУС - Попълва се от централата!": st.column_config.SelectboxColumn(
-                "СТАТУС - Попълва се от централата!",
-                options=STATUS_OPTIONS,
-                required=False,
-            )
-        },
-        key="differences_editor"
-    )
+    styled_df = view_df.style.applymap(
+    lambda v: (
+        "color:red;font-weight:bold"
+        if str(v).strip().startswith("-")
+        else (
+            "color:green;font-weight:bold"
+            if str(v).strip() not in ["", "0"]
+            else ""
+        )
+    ),
+    subset=["Difference"]
+)
+
+edited_df = st.data_editor(
+    view_df,
+    use_container_width=True,
+    hide_index=True,
+    num_rows="dynamic",
+    column_config={
+        "СТАТУС - Попълва се от централата!": st.column_config.SelectboxColumn(
+            "СТАТУС - Попълва се от централата!",
+            options=STATUS_OPTIONS,
+            required=False,
+        )
+    },
+    key="differences_editor"
+)
 
     if search.strip():
         st.warning("Редактираш филтриран изглед. За реално записване на масови промени изчисти търсенето.")
