@@ -463,16 +463,33 @@ def autofill_claims_from_master(claims_df, master_df):
 
 def read_new_claims_upload(uploaded_file):
     """
-    Чете директно Sheet1.
+    Чете директно два листа от upload файла:
 
-    Не използва Master Database.
-    Взима всички нужни данни директно от файла.
+    1) Sheet1
+       - съдържа основните данни от Нави
+       - Quantity = QTY по Нави
+
+    2) Разлики
+       - съдържа реалната разлика
+       - Quantity = Difference
+
+    Логика:
+    QTY = Sheet1 Quantity
+    Difference = Разлики Quantity
+    Received QTY = QTY + Difference
     """
 
     try:
-        raw = pd.read_excel(
+        sheet1 = pd.read_excel(
             uploaded_file,
             sheet_name="Sheet1",
+            dtype=object,
+            engine="openpyxl"
+        )
+
+        diff_sheet = pd.read_excel(
+            uploaded_file,
+            sheet_name="Разлики",
             dtype=object,
             engine="openpyxl"
         )
@@ -481,46 +498,177 @@ def read_new_claims_upload(uploaded_file):
         st.error(f"Грешка при четене на файла: {e}")
         return pd.DataFrame(columns=DIFFERENCES_COLUMNS)
 
-    if raw.empty:
+    if sheet1.empty:
+        st.error("Sheet1 е празен.")
         return pd.DataFrame(columns=DIFFERENCES_COLUMNS)
 
-    raw = normalize_columns(raw)
-    raw = clean_dataframe_as_text(raw)
+    if diff_sheet.empty:
+        st.error("Sheet 'Разлики' е празен.")
+        return pd.DataFrame(columns=DIFFERENCES_COLUMNS)
+
+    sheet1 = normalize_columns(sheet1)
+    sheet1 = clean_dataframe_as_text(sheet1)
+
+    diff_sheet = normalize_columns(diff_sheet)
+    diff_sheet = clean_dataframe_as_text(diff_sheet)
+
+    required_sheet1_columns = [
+        "Location Code",
+        "Vendor Name",
+        "Buy-from Vendor No_",
+        "Receipt No",
+        "Item No",
+        "Active No",
+        "Delivery No",
+        "Invoice No",
+        "InvoiceDate",
+        "Supplier Ref Num",
+        "Price per Invoice",
+        "Quantity",
+    ]
+
+    required_diff_columns = [
+        "Вътрешен №",
+        "Активен №",
+        "Quantity",
+    ]
+
+    missing_sheet1 = [
+        col for col in required_sheet1_columns
+        if col not in sheet1.columns
+    ]
+
+    missing_diff = [
+        col for col in required_diff_columns
+        if col not in diff_sheet.columns
+    ]
+
+    if missing_sheet1:
+        st.error(
+            "В Sheet1 липсват колони: "
+            + ", ".join(missing_sheet1)
+        )
+        return pd.DataFrame(columns=DIFFERENCES_COLUMNS)
+
+    if missing_diff:
+        st.error(
+            "В sheet 'Разлики' липсват колони: "
+            + ", ".join(missing_diff)
+        )
+        return pd.DataFrame(columns=DIFFERENCES_COLUMNS)
+
+    # ==================================================
+    # СЪЗДАВАМЕ LOOKUP ЗА DIFFERENCE ОТ SHEET "Разлики"
+    # ==================================================
+
+    diff_lookup_full = {}
+    diff_lookup_internal = {}
+
+    for _, diff_row in diff_sheet.iterrows():
+
+        diff_internal = normalize_key(
+            diff_row.get("Вътрешен №", "")
+        )
+
+        diff_active = normalize_key(
+            diff_row.get("Активен №", "")
+        )
+
+        diff_qty = clean_text(
+            diff_row.get("Quantity", "")
+        )
+
+        full_key = diff_internal + "||" + diff_active
+
+        if diff_internal or diff_active:
+            diff_lookup_full[full_key] = diff_qty
+
+        if diff_internal:
+            diff_lookup_internal[diff_internal] = diff_qty
+
+    def get_difference_for_row(row):
+
+        internal_key = normalize_key(
+            row.get("Item No", "")
+        )
+
+        active_key = normalize_key(
+            row.get("Active No", "")
+        )
+
+        full_key = internal_key + "||" + active_key
+
+        if full_key in diff_lookup_full:
+            return diff_lookup_full[full_key]
+
+        if internal_key in diff_lookup_internal:
+            return diff_lookup_internal[internal_key]
+
+        return "0"
+
+    # ==================================================
+    # ОСНОВНА ТАБЛИЦА
+    # ==================================================
 
     result = pd.DataFrame(columns=DIFFERENCES_COLUMNS)
 
-    result["Склад за дост."] = raw["Location Code"]
-    result["Доставчик"] = raw["Vendor Name"]
-    result["Vendor No"] = raw["Buy-from Vendor No_"]
+    result["Склад за дост."] = sheet1["Location Code"]
+
+    result["Доставчик"] = sheet1["Vendor Name"]
+
+    result["Vendor No"] = sheet1["Buy-from Vendor No_"]
+
     result["Начин на подаване"] = "Upload"
 
-    result["Номер прием"] = raw["Receipt No"]
+    result["Номер прием"] = sheet1["Receipt No"]
 
-    result["Вътрешен номер"] = raw["Item No"]
-    result["Активен номер"] = raw["Active No"]
+    result["Вътрешен номер"] = sheet1["Item No"]
 
-    result["Delivery No"] = raw["Delivery No"]
-    result["Invoice No"] = raw["Invoice No"]
-    result["Invoice Date"] = raw["InvoiceDate"]
+    result["Активен номер"] = sheet1["Active No"]
 
-    result["Ref. Number SUPPLIER"] = raw["Supplier Ref Num"]
+    result["Delivery No"] = sheet1["Delivery No"]
 
-    result["Price"] = raw["Price per Invoice"]
+    result["Invoice No"] = sheet1["Invoice No"]
 
-    result["QTY"] = raw["Quantity"]
+    result["Invoice Date"] = sheet1["InvoiceDate"]
 
-    result["Received QTY"] = ""
+    result["Ref. Number SUPPLIER"] = sheet1["Supplier Ref Num"]
 
-    result["Difference"] = raw["Quantity"]
+    result["Price"] = sheet1["Price per Invoice"]
 
-    # Стойност тотал от Нави = Цена × Количество
-    price_num = pd.to_numeric(
-        raw["Price per Invoice"],
+    # QTY идва от Sheet1 Quantity
+    result["QTY"] = sheet1["Quantity"]
+
+    # Difference идва от sheet Разлики Quantity
+    result["Difference"] = sheet1.apply(
+        get_difference_for_row,
+        axis=1
+    )
+
+    # ==================================================
+    # Received QTY = QTY + Difference
+    # ==================================================
+
+    qty_num = pd.to_numeric(
+        result["QTY"].astype(str).str.replace(",", ".", regex=False),
         errors="coerce"
     ).fillna(0)
 
-    qty_num = pd.to_numeric(
-        raw["Quantity"],
+    diff_num = pd.to_numeric(
+        result["Difference"].astype(str).str.replace(",", ".", regex=False),
+        errors="coerce"
+    ).fillna(0)
+
+    result["Received QTY"] = (
+        qty_num + diff_num
+    )
+
+    # ==================================================
+    # Стойност тотал от Нави = Price × QTY
+    # ==================================================
+
+    price_num = pd.to_numeric(
+        result["Price"].astype(str).str.replace(",", ".", regex=False),
         errors="coerce"
     ).fillna(0)
 
@@ -548,7 +696,6 @@ def read_new_claims_upload(uploaded_file):
     ]
 
     return result.reset_index(drop=True)
-
 # ======================================================
 # STATE
 # ======================================================
