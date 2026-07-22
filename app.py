@@ -512,6 +512,22 @@ def read_new_claims_upload(uploaded_file):
 
     diff_sheet = normalize_columns(diff_sheet)
     diff_sheet = clean_dataframe_as_text(diff_sheet)
+    # ==================================================
+# SHAREPOINT LOOKUP - НАЧИН НА ПОДАВАНЕ
+# ==================================================
+
+sharepoint_df = pd.read_excel(
+    "Sharepoint_Разлики_2026.xlsx",
+    dtype=str,
+    engine="openpyxl"
+).fillna("")
+
+submit_lookup = dict(
+    zip(
+        sharepoint_df["Name"].str.strip().str.upper(),
+        sharepoint_df["линк към сайт или спец.бланка"]
+    )
+)
 
     required_sheet1_columns = [
         "Location Code",
@@ -619,7 +635,12 @@ def read_new_claims_upload(uploaded_file):
 
     result["Vendor No"] = sheet1["Buy-from Vendor No_"]
 
-    result["Начин на подаване"] = "Upload"
+    result["Начин на подаване"] = result["Доставчик"].apply(
+    lambda x: submit_lookup.get(
+        str(x).strip().upper(),
+        ""
+    )
+)
 
     result["Номер прием"] = sheet1["Receipt No"]
 
