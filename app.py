@@ -431,21 +431,45 @@ def autofill_claims_from_master(claims_df, master_df):
             match = lookup_active[active_key]
 
         if match:
-            for field in [
-                "Доставчик",
-                "Vendor No",
-                "Вътрешен номер",
-                "Активен номер",
-                "Ref. Number SUPPLIER",
-                "Price",
-            ]:
-                if clean_text(row.get(field, "")) == "":
-                    row[field] = match.get(field, "")
+    for field in [
+        "Доставчик",
+        "Vendor No",
+        "Вътрешен номер",
+        "Активен номер",
+        "Ref. Number SUPPLIER",
+        "Price",
+    ]:
+        if clean_text(row.get(field, "")) == "":
+            row[field] = match.get(field, "")
 
-            # Важно: Ref. Number SUPPLIER и Price винаги ги обновяваме от Master,
-            # защото това е точната база за приложението.
-            row["Ref. Number SUPPLIER"] = match.get("Ref. Number SUPPLIER", "")
-            row["Price"] = match.get("Price", "")
+    # ==================================================
+    # FIX PRICE + REF NUMBER
+    # ==================================================
+
+    supplier_ref = clean_text(
+        match.get("Ref. Number SUPPLIER", "")
+    )
+
+    supplier_price = clean_text(
+        match.get("Price", "")
+    )
+
+    if supplier_ref == "":
+        supplier_ref = "0"
+
+    if supplier_price == "":
+        supplier_price = "0"
+
+    row["Ref. Number SUPPLIER"] = supplier_ref
+    row["Price"] = supplier_price
+
+else:
+
+    # ако артикулът въобще го няма в master database
+    row["Ref. Number SUPPLIER"] = "0"
+    row["Price"] = "0"
+
+        
 
         if clean_text(row.get("Склад за дост.", "")) == "":
             row["Склад за дост."] = "B01"
