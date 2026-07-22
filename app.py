@@ -623,29 +623,19 @@ def make_master_lookup(master_df):
     return lookup_internal, lookup_active
 
 # ======================================================
-# NEW CLAIMS UPLOAD
+# NEW CLAIMS UPLOAD - DIRECT FROM SHEET1
 # ======================================================
 
 def read_new_claims_upload(uploaded_file):
-    """
-    Upload файлът е с фиксирана структура.
-
-    Взимаме:
-    C = Доставчик
-    D = Vendor No / Доставчик №
-    E = Номер прием
-    F = Вътрешен номер
-    G = Активен номер
-    I = Quantity -> Difference
-    """
 
     try:
         raw = pd.read_excel(
             uploaded_file,
-            sheet_name=0,
+            sheet_name="Sheet1",
             dtype=object,
             engine="openpyxl"
         )
+
     except Exception as e:
         st.error(f"Грешка при четене на файла: {e}")
         return pd.DataFrame(columns=DIFFERENCES_COLUMNS)
@@ -656,666 +646,79 @@ def read_new_claims_upload(uploaded_file):
     raw = normalize_columns(raw)
     raw = clean_dataframe_as_text(raw)
 
-    if raw.shape[1] < 9:
-        st.error("Файлът трябва да има минимум 9 колони, защото използваме C, D, E, F, G и I.")
-        return pd.DataFrame(columns=DIFFERENCES_COLUMNS)
-
-    col_c_supplier = raw.columns[2]
-    col_d_vendor = raw.columns[3]
-    col_e_receipt = raw.columns[4]
-    col_f_internal = raw.columns[5]
-    col_g_active = raw.columns[6]
-    col_i_quantity = raw.columns[8]
-
     result = pd.DataFrame(columns=DIFFERENCES_COLUMNS)
 
-    result["Склад за дост."] = "B01"
-    result["Доставчик"] = raw[col_c_supplier].map(clean_text)
-    result["Vendor No"] = raw[col_d_vendor].map(clean_text)
+    # ==================================================
+    # ДАННИ ДИРЕКТНО ОТ SHEET1
+    # ==================================================
+
+    result["Склад за дост."] = raw["Location Code"]
+
+    result["Доставчик"] = raw["Vendor Name"]
+
+    result["Vendor No"] = raw["Buy-from Vendor No_"]
+
     result["Начин на подаване"] = "Upload"
-    result["Номер прием"] = raw[col_e_receipt].map(clean_text)
-    result["Вътрешен номер"] = raw[col_f_internal].map(clean_text)
-    result["Активен номер"] = raw[col_g_active].map(clean_text)
 
-    result["Delivery No"] = ""
-    result["Invoice No"] = ""
-    result["Invoice Date"] = ""
+    result["Номер прием"] = raw["Receipt No"]
 
-    result["Ref. Number SUPPLIER"] = ""
-    result["Price"] = ""
+    result["Вътрешен номер"] = raw["Item No"]
 
-    result["QTY"] = ""
+    result["Активен номер"] = raw["Active No"]
+
+    result["Delivery No"] = raw["Delivery No"]
+
+    result["Invoice No"] = raw["Invoice No"]
+
+    result["Invoice Date"] = raw["InvoiceDate"]
+
+    result["Ref. Number SUPPLIER"] = raw["Supplier Ref Num"]
+
+    result["Price"] = raw["Price per Invoice"]
+
+    result["QTY"] = raw["Quantity"]
+
     result["Received QTY"] = ""
-    result["Difference"] = raw[col_i_quantity].map(clean_text)
 
-    result["Стойност тотал в евро"] = ""
-    result["Дата на подаване"] = datetime.now().strftime("%d.%m.%Y")
+    result["Difference"] = raw["Quantity"]
+
+    # ==================================================
+    # ТОТАЛ В ЕВРО
+    # ==================================================
+
+    price_num = pd.to_numeric(
+        raw["Price per Invoice"],
+        errors="coerce"
+    ).fillna(0)
+
+    qty_num = pd.to_numeric(
+        raw["Quantity"],
+        errors="coerce"
+    ).fillna(0)
+
+    result["Стойност тотал в евро"] = (
+        price_num * qty_num
+    ).round(2)
+
+    result["Дата на подаване"] = datetime.now().strftime(
+        "%d.%m.%Y"
+    )
+
     result["СТАТУС - Попълва се от централата!"] = "Нова"
+
     result["№ документа за разлики"] = ""
+
     result["Дата на обработка на докумнет"] = ""
+
     result["Допълнителен коментар"] = ""
 
     result = result[DIFFERENCES_COLUMNS]
+
     result = clean_dataframe_as_text(result)
 
     result = result[
         (result["Вътрешен номер"].astype(str).str.strip() != "") |
-        (result["Активен номер"].astype(str).str.strip() != "") |
-        (result["Номер прием"].astype(str).str.strip() != "")
+        (result["Активен номер"].astype(str).str.strip() != "")
     ]
 
     return result.reset_index(drop=True)
-
-
-# ======================================================
-# STATE
-# ======================================================
-
-if "page" not in st.session_state:
-    st.session_state.page = "Разлики"
-
-if "master_df" not in st.session_state:
-    st.session_state.master_df = load_master_database()
-
-if "differences_df" not in st.session_state:
-    st.session_state.differences_df = load_differences_database()
-
-if "preview_claims_df" not in st.session_state:
-    st.session_state.preview_claims_df = pd.DataFrame(columns=DIFFERENCES_COLUMNS)
-
-
-# ======================================================
-# HEADER
-# ======================================================
-
-st.markdown('<div class="portal-header">', unsafe_allow_html=True)
-
-h1, h2, h3 = st.columns([1.2, 5.2, 1.2])
-
-with h1:
-    st.markdown(
-        """
-        <div class="logo-box">
-            INTER<br>CARS
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-with h2:
-    st.markdown(
-        """
-        <div class="title-box">
-            DIFFERENCES PORTAL INTER CARS
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-with h3:
-    st.markdown(
-        """
-        <div class="logo-box">
-            B01<br>SUPPLIERS
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-st.markdown("</div>", unsafe_allow_html=True)
-
-
-# ======================================================
-# MENU
-# ======================================================
-
-st.markdown('<div class="menu-wrapper">', unsafe_allow_html=True)
-
-m1, m2, m3, m4, m5 = st.columns(5)
-
-with m1:
-    if st.button("📋 Разлики"):
-        st.session_state.page = "Разлики"
-
-with m2:
-    if st.button("📦 Master Database"):
-        st.session_state.page = "Master Database"
-
-with m3:
-    if st.button("➕ New Claims"):
-        st.session_state.page = "New Claims"
-
-with m4:
-    if st.button("💰 Счетоводство"):
-        st.session_state.page = "Счетоводство"
-
-with m5:
-    if st.button("⚙️ Админ"):
-        st.session_state.page = "Админ"
-
-st.markdown("</div>", unsafe_allow_html=True)
-
-
-# ======================================================
-# CURRENT DATA
-# ======================================================
-
-master_df = st.session_state.master_df.copy()
-differences_df = st.session_state.differences_df.copy()
-
-
-# ======================================================
-# PAGE: DIFFERENCES
-# ======================================================
-
-if st.session_state.page == "Разлики":
-
-    st.markdown('<div class="section-title">📋 Основен списък с разлики</div>', unsafe_allow_html=True)
-
-    total_rows = len(differences_df)
-
-    if "Difference" in differences_df.columns:
-        diff_num = safe_numeric(differences_df["Difference"])
-        plus_rows = int((diff_num > 0).sum())
-        minus_rows = int((diff_num < 0).sum())
-    else:
-        plus_rows = 0
-        minus_rows = 0
-
-    if "СТАТУС - Попълва се от централата!" in differences_df.columns:
-        open_rows = int(
-            differences_df["СТАТУС - Попълва се от централата!"]
-            .astype(str)
-            .str.lower()
-            .isin(["", "нова", "подадена", "изпратена", "чака отговор", "обработва се"])
-            .sum()
-        )
-    else:
-        open_rows = 0
-
-    k1, k2, k3, k4 = st.columns(4)
-    k1.metric("Всички редове", total_rows)
-    k2.metric("Плюсове", plus_rows)
-    k3.metric("Минуси", minus_rows)
-    k4.metric("Отворени / необработени", open_rows)
-
-    st.markdown(
-        """
-        <div class="info-box">
-        Основният списък пази същата структура и ред на колоните като Excel файла.
-        Редактирай директно в таблицата. Автозаписът работи, когато няма активен филтър.
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-    search = st.text_input(
-        "Търсене в основния списък",
-        placeholder="Доставчик, вътрешен номер, активен номер, номер прием..."
-    )
-
-    view_df = differences_df.copy()
-
-    if search.strip():
-        query = search.strip().lower()
-
-        mask = view_df.apply(
-            lambda row: row.astype(str).str.lower().str.contains(query, na=False).any(),
-            axis=1
-        )
-
-        view_df = view_df[mask]
-
-    edited_df = st.data_editor(
-        view_df,
-        use_container_width=True,
-        hide_index=True,
-        num_rows="dynamic",
-        column_config={
-            "СТАТУС - Попълва се от централата!": st.column_config.SelectboxColumn(
-                "СТАТУС - Попълва се от централата!",
-                options=STATUS_OPTIONS,
-                required=False,
-            )
-        },
-        key="differences_editor"
-    )
-
-    if search.strip():
-        st.warning("Редактираш филтриран изглед. За запис на масови промени изчисти търсенето.")
-    else:
-        old_hash = dataframe_hash(differences_df)
-        new_hash = dataframe_hash(edited_df)
-
-        if old_hash != new_hash:
-            st.session_state.differences_df = edited_df.copy()
-            save_differences_database(edited_df)
-            st.success("Промените са записани автоматично.")
-
-    c1, c2, c3 = st.columns([1, 1, 5])
-
-    with c1:
-        st.download_button(
-            "⬇️ Export CSV",
-            data=st.session_state.differences_df.to_csv(index=False, encoding="utf-8-sig"),
-            file_name="differences_database.csv",
-            mime="text/csv"
-        )
-
-    with c2:
-        if st.button("🔄 Презареди"):
-            st.session_state.differences_df = load_differences_database()
-            st.rerun()
-
-
-# ======================================================
-# PAGE: MASTER DATABASE
-# ======================================================
-
-elif st.session_state.page == "Master Database":
-
-    st.markdown('<div class="section-title">📦 Master Database / Вземане на данни</div>', unsafe_allow_html=True)
-
-    st.markdown(
-        """
-        <div class="info-box">
-        Master Database се използва за автоматично наливане на 
-        <b>Ref. Number SUPPLIER</b> и <b>Price</b> при New Claims.
-        Дубликатите се чистят по комбинация <b>Вътрешен номер + Активен номер</b>.
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-    price_not_empty = int(master_df["Price"].astype(str).str.strip().ne("").sum()) if "Price" in master_df.columns else 0
-    price_empty = int(master_df["Price"].astype(str).str.strip().eq("").sum()) if "Price" in master_df.columns else 0
-    ref_not_empty = int(master_df["Ref. Number SUPPLIER"].astype(str).str.strip().ne("").sum()) if "Ref. Number SUPPLIER" in master_df.columns else 0
-
-    c1, c2, c3, c4, c5 = st.columns(5)
-
-    c1.metric("Master редове", len(master_df))
-    c2.metric("С цена", price_not_empty)
-    c3.metric("Без цена", price_empty)
-    c4.metric("С Ref.", ref_not_empty)
-    c5.metric("Excel файлове", len(get_excel_files()))
-
-    b1, b2, b3 = st.columns([1.3, 1.3, 5])
-
-    with b1:
-        if st.button("🔄 Пресъздай Master"):
-            new_master, source_log = build_master_database_from_excels()
-            save_master_database(new_master)
-            st.session_state.master_df = new_master
-
-            st.success("Master Database е пресъздадена.")
-            if source_log:
-                st.caption("Източници: " + " | ".join(source_log))
-
-            st.rerun()
-
-    with b2:
-        st.download_button(
-            "⬇️ Свали Master CSV",
-            data=master_df.to_csv(index=False, encoding="utf-8-sig"),
-            file_name="master_database.csv",
-            mime="text/csv"
-        )
-
-    search_master = st.text_input(
-        "Търсене в Master Database",
-        placeholder="Вътрешен номер / активен номер / доставчик / vendor / цена..."
-    )
-
-    master_view = master_df.copy()
-
-    if search_master.strip():
-        query = search_master.strip().lower()
-
-        mask = master_view.apply(
-            lambda row: row.astype(str).str.lower().str.contains(query, na=False).any(),
-            axis=1
-        )
-
-        master_view = master_view[mask]
-
-    edited_master = st.data_editor(
-        master_view,
-        use_container_width=True,
-        hide_index=True,
-        num_rows="dynamic",
-        key="master_editor"
-    )
-
-    if search_master.strip():
-        st.warning("Редактираш филтриран изглед. За пълна редакция изчисти търсенето.")
-    else:
-        old_hash = dataframe_hash(master_df)
-        new_hash = dataframe_hash(edited_master)
-
-        if old_hash != new_hash:
-            cleaned = clean_dataframe_as_text(edited_master)
-
-            if all(col in cleaned.columns for col in MASTER_COLUMNS):
-                cleaned["_key_internal"] = cleaned["Вътрешен номер"].map(normalize_key)
-                cleaned["_key_active"] = cleaned["Активен номер"].map(normalize_key)
-                cleaned["_dedupe_key"] = cleaned["_key_internal"] + "||" + cleaned["_key_active"]
-
-                cleaned = cleaned.drop_duplicates(
-                    subset=["_dedupe_key"],
-                    keep="first"
-                )
-
-                cleaned = cleaned.drop(
-                    columns=["_key_internal", "_key_active", "_dedupe_key"],
-                    errors="ignore"
-                )
-
-            save_master_database(cleaned)
-            st.session_state.master_df = cleaned
-            st.success("Master Database е записана автоматично.")
-
-
-# ======================================================
-# PAGE: NEW CLAIMS
-# ======================================================
-
-elif st.session_state.page == "New Claims":
-
-    st.markdown('<div class="section-title">➕ New Claims / Upload нови разлики</div>', unsafe_allow_html=True)
-
-    st.markdown(
-        """
-        <div class="info-box">
-        Качи Excel файл с нови разлики. Приложението взима:
-        <br><br>
-        <b>C</b> = Доставчик<br>
-        <b>D</b> = Vendor No / Доставчик №<br>
-        <b>E</b> = Номер прием<br>
-        <b>F</b> = Вътрешен номер<br>
-        <b>G</b> = Активен номер<br>
-        <b>I</b> = Quantity, което засега влиза в <b>Difference</b>
-        <br><br>
-        След това търси по <b>Вътрешен номер</b> или <b>Активен номер</b> в Master Database.
-        Ако намери артикул — налива цена и Ref. Ако не намери — слага <b>0</b>.
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-    uploaded_claims_file = st.file_uploader(
-        "Качи Excel файл с нови разлики",
-        type=["xlsx"],
-        key="new_claims_upload"
-    )
-
-    c1, c2, c3 = st.columns([1.2, 1.2, 5])
-
-    with c1:
-        preview_clicked = st.button("👁️ Прегледай файла")
-
-    with c2:
-        confirm_clicked = st.button("✅ Потвърди и добави")
-
-    if uploaded_claims_file is not None and preview_clicked:
-        parsed = read_new_claims_upload(uploaded_claims_file)
-
-        if parsed.empty:
-            st.error("Не са намерени валидни редове във файла.")
-        else:
-            filled = autofill_claims_from_master(
-                parsed,
-                st.session_state.master_df
-            )
-
-            st.session_state.preview_claims_df = filled.copy()
-
-            st.success(f"Подготвени редове за добавяне: {len(filled)}")
-
-    preview_df = st.session_state.preview_claims_df.copy()
-
-    if not preview_df.empty:
-        st.subheader("Преглед преди добавяне в основния списък")
-
-        diff_values = safe_numeric(preview_df["Difference"])
-        price_values = preview_df["Price"].astype(str).str.strip()
-        ref_values = preview_df["Ref. Number SUPPLIER"].astype(str).str.strip()
-
-        rows_with_price = int(price_values.ne("").sum())
-        rows_price_zero = int(price_values.eq("0").sum())
-        rows_with_ref = int(ref_values.ne("").sum())
-        rows_ref_zero = int(ref_values.eq("0").sum())
-
-        s1, s2, s3, s4, s5, s6 = st.columns(6)
-
-        s1.metric("Редове", len(preview_df))
-        s2.metric("Плюсове", int((diff_values > 0).sum()))
-        s3.metric("Минуси", int((diff_values < 0).sum()))
-        s4.metric("С цена", rows_with_price)
-        s5.metric("Price = 0", rows_price_zero)
-        s6.metric("Ref = 0", rows_ref_zero)
-
-        edited_preview = st.data_editor(
-            preview_df,
-            use_container_width=True,
-            hide_index=True,
-            num_rows="dynamic",
-            column_config={
-                "СТАТУС - Попълва се от централата!": st.column_config.SelectboxColumn(
-                    "СТАТУС - Попълва се от централата!",
-                    options=STATUS_OPTIONS,
-                    required=False,
-                )
-            },
-            key="preview_claims_editor"
-        )
-
-        st.session_state.preview_claims_df = edited_preview.copy()
-
-    if confirm_clicked:
-        preview = st.session_state.preview_claims_df.copy()
-
-        if preview.empty:
-            st.error("Няма подготвени редове. Първо натисни 'Прегледай файла'.")
-        else:
-            current = load_differences_database()
-
-            updated = pd.concat(
-                [current, preview],
-                ignore_index=True
-            )
-
-            updated = clean_dataframe_as_text(updated)
-            updated = updated[DIFFERENCES_COLUMNS]
-
-            save_differences_database(updated)
-
-            st.session_state.differences_df = updated
-            st.session_state.preview_claims_df = pd.DataFrame(columns=DIFFERENCES_COLUMNS)
-
-            st.success(f"Добавени са {len(preview)} реда в основния списък Разлики.")
-            st.info("Отвори меню 'Разлики', за да ги видиш в основната таблица.")
-
-
-# ======================================================
-# PAGE: ACCOUNTING
-# ======================================================
-
-elif st.session_state.page == "Счетоводство":
-
-    st.markdown('<div class="section-title">💰 Счетоводство</div>', unsafe_allow_html=True)
-
-    st.markdown(
-        """
-        <div class="info-box">
-        Тук търсиш по документ, номер прием, доставчик, вътрешен номер или активен номер.
-        Резултатът може да се копира директно.
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-    accounting_search = st.text_input(
-        "Въведи номер / документ / прием / доставчик / артикул",
-        placeholder="Например номер прием, вътрешен номер или доставчик..."
-    )
-
-    result_df = differences_df.copy()
-
-    if accounting_search.strip():
-        query = accounting_search.strip().lower()
-
-        mask = result_df.apply(
-            lambda row: row.astype(str).str.lower().str.contains(query, na=False).any(),
-            axis=1
-        )
-
-        result_df = result_df[mask]
-    else:
-        result_df = result_df.iloc[0:0]
-
-    st.metric("Намерени редове", len(result_df))
-
-    st.dataframe(
-        result_df,
-        use_container_width=True,
-        hide_index=True
-    )
-
-    if not result_df.empty:
-        copy_text = to_tsv(result_df)
-
-        st.text_area(
-            "Готов текст за копиране",
-            value=copy_text,
-            height=230,
-            key="accounting_copy_text"
-        )
-
-        st.download_button(
-            "⬇️ Свали резултата CSV",
-            data=result_df.to_csv(index=False, encoding="utf-8-sig"),
-            file_name="accounting_export.csv",
-            mime="text/csv"
-        )
-
-
-# ======================================================
-# PAGE: ADMIN
-# ======================================================
-
-elif st.session_state.page == "Админ":
-
-    st.markdown('<div class="section-title">⚙️ Администрация</div>', unsafe_allow_html=True)
-
-    st.markdown(
-        """
-        <div class="info-box">
-        Технически действия: проверка на файлове, ръчно добавяне, изчистване и пресъздаване на бази.
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-    st.subheader("Файлове в проекта")
-
-    files_df = pd.DataFrame({"Файл": os.listdir(".")})
-    st.dataframe(files_df, use_container_width=True, hide_index=True)
-
-    st.subheader("Ръчно добавяне в Master Database")
-
-    manual = st.data_editor(
-        pd.DataFrame(columns=MASTER_COLUMNS),
-        use_container_width=True,
-        hide_index=True,
-        num_rows="dynamic",
-        key="manual_master_add"
-    )
-
-    if st.button("➕ Добави към Master Database"):
-        if manual.empty:
-            st.warning("Няма въведени редове.")
-        else:
-            current_master = load_master_database()
-
-            updated_master = pd.concat(
-                [current_master, manual],
-                ignore_index=True
-            )
-
-            updated_master = clean_dataframe_as_text(updated_master)
-
-            updated_master["_key_internal"] = updated_master["Вътрешен номер"].map(normalize_key)
-            updated_master["_key_active"] = updated_master["Активен номер"].map(normalize_key)
-            updated_master["_dedupe_key"] = updated_master["_key_internal"] + "||" + updated_master["_key_active"]
-
-            updated_master = updated_master.drop_duplicates(
-                subset=["_dedupe_key"],
-                keep="first"
-            )
-
-            updated_master = updated_master.drop(
-                columns=["_key_internal", "_key_active", "_dedupe_key"],
-                errors="ignore"
-            )
-
-            save_master_database(updated_master)
-            st.session_state.master_df = updated_master
-
-            st.success("Ръчно добавените редове са записани в Master Database.")
-
-    st.divider()
-
-    danger = st.checkbox("Покажи опасни действия")
-
-    if danger:
-
-        c1, c2, c3 = st.columns(3)
-
-        with c1:
-            if st.button("🧹 Изчисти основния списък Разлики"):
-                empty = pd.DataFrame(columns=DIFFERENCES_COLUMNS)
-
-                save_differences_database(empty)
-                st.session_state.differences_df = empty
-
-                st.success("Основният списък е изчистен.")
-
-        with c2:
-            if st.button("🧹 Изтрий Master CSV"):
-                if os.path.exists(MASTER_DB_FILE):
-                    os.remove(MASTER_DB_FILE)
-
-                st.session_state.master_df = pd.DataFrame(columns=MASTER_COLUMNS)
-
-                st.success("Master CSV е изтрит.")
-
-        with c3:
-            if st.button("🔄 Изтрий и пресъздай Master"):
-                if os.path.exists(MASTER_DB_FILE):
-                    os.remove(MASTER_DB_FILE)
-
-                new_master, source_log = build_master_database_from_excels()
-
-                save_master_database(new_master)
-                st.session_state.master_df = new_master
-
-                st.success("Master Database е пресъздадена.")
-                if source_log:
-                    st.caption("Източници: " + " | ".join(source_log))
-
-                st.rerun()
-
-
-# ======================================================
-# FOOTER
-# ======================================================
-
-st.markdown("---")
-st.markdown(
-    """
-    <div class="small-muted">
-    Differences Portal Inter Cars · Professional v3 · Master Database + Upload New Claims + Accounting Export
-    </div>
-    """,
-    unsafe_allow_html=True
-)
