@@ -52,6 +52,7 @@ DIFFERENCES_COLUMNS = [
     "QTY",
     "Received QTY",
     "Difference",
+    "Diff Status",
     "Стойност тотал от Нави",
     "Дата на подаване",
     "СТАТУС - Попълва се от централата!",
