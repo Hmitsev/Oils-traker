@@ -552,8 +552,6 @@ def to_tsv(df):
 if "page" not in st.session_state:
     st.session_state.page = "Разлики"
 
-if "master_df" not in st.session_state:
-    st.session_state.master_df = load_master_database()
 
 if "differences_df" not in st.session_state:
     st.session_state.differences_df = load_differences_database()
@@ -609,15 +607,12 @@ st.markdown("</div>", unsafe_allow_html=True)
 
 st.markdown('<div class="menu-wrapper">', unsafe_allow_html=True)
 
-m1, m2, m3, m4, m5 = st.columns(5)
+m1, m3, m4, m5 = st.columns(4)
 
 with m1:
     if st.button("📋 Разлики"):
         st.session_state.page = "Разлики"
 
-with m2:
-    if st.button("📦 Master Database"):
-        st.session_state.page = "Master Database"
 
 with m3:
     if st.button("➕ New Claims"):
@@ -638,7 +633,6 @@ st.markdown("</div>", unsafe_allow_html=True)
 # GLOBAL DATA
 # ======================================================
 
-master_df = st.session_state.master_df.copy()
 differences_df = st.session_state.differences_df.copy()
 
 
@@ -743,97 +737,6 @@ if st.session_state.page == "Разлики":
         if st.button("🔄 Презареди"):
             st.session_state.differences_df = load_differences_database()
             st.rerun()
-
-
-# ======================================================
-# PAGE: MASTER DATABASE
-# ======================================================
-
-elif st.session_state.page == "Master Database":
-
-    st.markdown('<div class="section-title">📦 Master Database / Вземане на данни</div>', unsafe_allow_html=True)
-
-    st.markdown(
-        """
-        <div class="info-box">
-        Тази база се изгражда от Excel файловете в проекта.
-        Търси sheet, който съдържа колоните:
-        <b>Доставчик, Vendor No, Вътрешен номер, Активен номер, Ref. Number SUPPLIER, Price</b>.
-        Дубликатите се махат по комбинация <b>Вътрешен номер + Активен номер</b>.
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-    c1, c2, c3, c4 = st.columns(4)
-
-    c1.metric("Master редове", len(master_df))
-    c2.metric("Уникални доставчици", master_df["Доставчик"].nunique() if "Доставчик" in master_df.columns else 0)
-    c3.metric("Vendor No", master_df["Vendor No"].nunique() if "Vendor No" in master_df.columns else 0)
-    c4.metric("Excel файлове", len(get_excel_files()))
-
-    b1, b2, b3 = st.columns([1.3, 1.3, 5])
-
-    with b1:
-        if st.button("🔄 Пресъздай Master"):
-            new_master, source_log = build_master_database_from_excels()
-            save_master_database(new_master)
-            st.session_state.master_df = new_master
-            st.success("Master Database е пресъздадена.")
-            if source_log:
-                st.caption("Източници: " + " | ".join(source_log))
-            st.rerun()
-
-    with b2:
-        st.download_button(
-            "⬇️ Свали Master CSV",
-            data=master_df.to_csv(index=False, encoding="utf-8-sig"),
-            file_name="master_database.csv",
-            mime="text/csv"
-        )
-
-    search_master = st.text_input(
-        "Търсене в Master Database",
-        placeholder="Вътрешен номер / активен номер / доставчик / vendor..."
-    )
-
-    master_view = master_df.copy()
-
-    if search_master.strip():
-        search_value = search_master.strip().lower()
-        mask = master_view.apply(
-            lambda row: row.astype(str).str.lower().str.contains(search_value, na=False).any(),
-            axis=1
-        )
-        master_view = master_view[mask]
-
-    edited_master = st.data_editor(
-        master_view,
-        use_container_width=True,
-        hide_index=True,
-        num_rows="dynamic",
-        key="master_editor"
-    )
-
-    if search_master.strip():
-        st.warning("Редактираш филтриран изглед. За пълна редакция изчисти търсенето.")
-    else:
-        old_hash = dataframe_hash(master_df)
-        new_hash = dataframe_hash(edited_master)
-
-        if old_hash != new_hash:
-            cleaned = clean_dataframe_as_text(edited_master)
-
-            if all(col in cleaned.columns for col in MASTER_REQUIRED_COLUMNS):
-                cleaned["_key_internal"] = cleaned["Вътрешен номер"].map(normalize_key)
-                cleaned["_key_active"] = cleaned["Активен номер"].map(normalize_key)
-                cleaned["_dedupe_key"] = cleaned["_key_internal"] + "||" + cleaned["_key_active"]
-                cleaned = cleaned.drop_duplicates(subset=["_dedupe_key"], keep="first")
-                cleaned = cleaned.drop(columns=["_key_internal", "_key_active", "_dedupe_key"])
-
-            save_master_database(cleaned)
-            st.session_state.master_df = cleaned
-            st.success("Master Database е записана автоматично.")
 
 
 # ======================================================
