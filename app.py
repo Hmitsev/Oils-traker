@@ -478,6 +478,10 @@ def read_new_claims_upload(uploaded_file):
     QTY = Sheet1 Quantity
     Difference = Разлики Quantity
     Received QTY = QTY + Difference
+
+    Начин на подаване:
+    Взима се от Sharepoint_Разлики_2026.xlsx по доставчик.
+    Ако няма намерена информация - остава празно.
     """
 
     try:
@@ -512,22 +516,35 @@ def read_new_claims_upload(uploaded_file):
 
     diff_sheet = normalize_columns(diff_sheet)
     diff_sheet = clean_dataframe_as_text(diff_sheet)
+
     # ==================================================
-# SHAREPOINT LOOKUP - НАЧИН НА ПОДАВАНЕ
-# ==================================================
+    # SHAREPOINT LOOKUP - НАЧИН НА ПОДАВАНЕ
+    # ==================================================
 
-sharepoint_df = pd.read_excel(
-    "Sharepoint_Разлики_2026.xlsx",
-    dtype=str,
-    engine="openpyxl"
-).fillna("")
+    submit_lookup = {}
 
-submit_lookup = dict(
-    zip(
-        sharepoint_df["Name"].str.strip().str.upper(),
-        sharepoint_df["линк към сайт или спец.бланка"]
-    )
-)
+    try:
+        sharepoint_df = pd.read_excel(
+            "Sharepoint_Разлики_2026.xlsx",
+            dtype=str,
+            engine="openpyxl"
+        ).fillna("")
+
+        sharepoint_df = normalize_columns(sharepoint_df)
+
+        if (
+            "Name" in sharepoint_df.columns
+            and "линк към сайт или спец.бланка" in sharepoint_df.columns
+        ):
+            submit_lookup = dict(
+                zip(
+                    sharepoint_df["Name"].astype(str).str.strip().str.upper(),
+                    sharepoint_df["линк към сайт или спец.бланка"].astype(str)
+                )
+            )
+
+    except Exception:
+        submit_lookup = {}
 
     required_sheet1_columns = [
         "Location Code",
@@ -635,12 +652,14 @@ submit_lookup = dict(
 
     result["Vendor No"] = sheet1["Buy-from Vendor No_"]
 
+    # Начин на подаване от Sharepoint_Разлики_2026.xlsx
+    # Ако няма информация за доставчика - остава празно
     result["Начин на подаване"] = result["Доставчик"].apply(
-    lambda x: submit_lookup.get(
-        str(x).strip().upper(),
-        ""
+        lambda x: submit_lookup.get(
+            str(x).strip().upper(),
+            ""
+        )
     )
-)
 
     result["Номер прием"] = sheet1["Receipt No"]
 
