@@ -607,50 +607,89 @@ def read_new_claims_upload(uploaded_file):
         return "0"
 
     # ==================================================
-    # ОСНОВНА ТАБЛИЦА
-    # ==================================================
+# ОСНОВНА ТАБЛИЦА
+# ==================================================
 
-    result = pd.DataFrame(columns=DIFFERENCES_COLUMNS)
+result = pd.DataFrame(columns=DIFFERENCES_COLUMNS)
 
-    result["Склад за дост."] = sheet1["Location Code"]
+result["Склад за дост."] = sheet1["Location Code"]
 
-    result["Доставчик"] = sheet1["Vendor Name"]
+result["Доставчик"] = sheet1["Vendor Name"]
 
-    result["Vendor No"] = sheet1["Buy-from Vendor No_"]
+result["Vendor No"] = sheet1["Buy-from Vendor No_"]
 
-    result["Начин на подаване"] = "Upload"
+result["Начин на подаване"] = "Upload"
 
-    result["Номер прием"] = sheet1["Receipt No"]
+result["Номер прием"] = sheet1["Receipt No"]
 
-    result["Вътрешен номер"] = sheet1["Item No"]
+result["Вътрешен номер"] = sheet1["Item No"]
 
-    result["Активен номер"] = sheet1["Active No"]
+result["Активен номер"] = sheet1["Active No"]
 
-    result["Delivery No"] = sheet1["Delivery No"]
+result["Delivery No"] = sheet1["Delivery No"]
 
-    result["Invoice No"] = sheet1["Invoice No"]
+result["Invoice No"] = sheet1["Invoice No"]
 
-    result["Invoice Date"] = sheet1["InvoiceDate"]
+result["Invoice Date"] = sheet1["InvoiceDate"]
 
-    result["Ref. Number SUPPLIER"] = sheet1["Supplier Ref Num"]
+result["Ref. Number SUPPLIER"] = sheet1["Supplier Ref Num"]
 
-    result["Price"] = sheet1["Price per Invoice"]
+result["Price"] = sheet1["Price per Invoice"]
 
-    # QTY идва от Sheet1 Quantity
-    result["QTY"] = sheet1["Quantity"]
+# QTY идва от Sheet1 Quantity
+result["QTY"] = sheet1["Quantity"]
 
-    # Difference идва от sheet Разлики Quantity
-    result["Difference"] = sheet1.apply(
+# Difference идва от лист Разлики -> Quantity
+result["Difference"] = sheet1.apply(
     get_difference_for_row,
     axis=1
 )
 
-result["Difference"] = result["Difference"].apply(
-    lambda x: (
-        f"🔴 {x}"
-        if str(x).strip().startswith("-")
-        else f"🟢 {x}"
-    )
+# Визуална колона за плюс/минус
+result["Diff Status"] = result["Difference"].apply(
+    lambda x: "🔴" if str(x).strip().startswith("-") else "🟢"
+)
+
+# ==================================================
+# Received QTY = QTY + Difference
+# ==================================================
+
+qty_num = pd.to_numeric(
+    result["QTY"].astype(str).str.replace(",", ".", regex=False),
+    errors="coerce"
+).fillna(0)
+
+diff_num = pd.to_numeric(
+    result["Difference"].astype(str).str.replace(",", ".", regex=False),
+    errors="coerce"
+).fillna(0)
+
+result["Received QTY"] = (
+    qty_num + diff_num
+)
+
+# ==================================================
+# Стойност тотал от Нави = Price × QTY
+# ==================================================
+
+price_num = pd.to_numeric(
+    result["Price"].astype(str).str.replace(",", ".", regex=False),
+    errors="coerce"
+).fillna(0)
+
+result["Стойност тотал от Нави"] = (
+    price_num * qty_num
+).round(2)
+
+result["Дата на подаване"] = datetime.now().strftime("%d.%m.%Y")
+
+result["СТАТУС - Попълва се от централата!"] = "Нова"
+
+result["№ документа за разлики"] = ""
+
+result["Дата на обработка на докумнет"] = ""
+
+result["Допълнителен коментар"] = ""
 
     # ==================================================
     # Received QTY = QTY + Difference
