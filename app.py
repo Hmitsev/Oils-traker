@@ -708,8 +708,7 @@ def read_new_claims_upload(uploaded_file):
     result["Received QTY"] = (
         qty_num + diff_num
     )
-
-    # ==================================================
+# ==================================================
 # Стойност тотал от Нави = Price × ABS(Difference)
 # ==================================================
 
@@ -726,7 +725,6 @@ difference_abs = pd.to_numeric(
 result["Стойност тотал от Нави"] = (
     price_num * difference_abs
 ).round(2)
-
     result["Дата на подаване"] = datetime.now().strftime("%d.%m.%Y")
 
     result["СТАТУС - Попълва се от централата!"] = "Нова"
