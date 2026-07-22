@@ -575,6 +575,7 @@ def load_differences_database():
 # ======================================================
 
 def make_master_lookup(master_df):
+
     lookup_internal = {}
     lookup_active = {}
 
@@ -582,114 +583,44 @@ def make_master_lookup(master_df):
         return lookup_internal, lookup_active
 
     for _, row in master_df.iterrows():
-        internal_key = normalize_key(row.get("Вътрешен номер", ""))
-        active_key = normalize_key(row.get("Активен номер", ""))
+
+        internal_key = normalize_key(
+            row.get("Вътрешен номер", "")
+        )
+
+        active_key = normalize_key(
+            row.get("Активен номер", "")
+        )
 
         record = {
-            "Доставчик": clean_text(row.get("Доставчик", "")),
-            "Vendor No": clean_text(row.get("Vendor No", "")),
-            "Вътрешен номер": clean_text(row.get("Вътрешен номер", "")),
-            "Активен номер": clean_text(row.get("Активен номер", "")),
-            "Ref. Number SUPPLIER": clean_text(row.get("Ref. Number SUPPLIER", "")),
-            "Price": clean_text(row.get("Price", "")),
+            "Доставчик": clean_text(
+                row.get("Доставчик", "")
+            ),
+            "Vendor No": clean_text(
+                row.get("Vendor No", "")
+            ),
+            "Вътрешен номер": clean_text(
+                row.get("Вътрешен номер", "")
+            ),
+            "Активен номер": clean_text(
+                row.get("Активен номер", "")
+            ),
+            "Ref. Number SUPPLIER": clean_text(
+                row.get("Ref. Number SUPPLIER", "")
+            ),
+            "Price": clean_text(
+                row.get("Price", "")
+            ),
         }
 
+        # Взимаме ПОСЛЕДНИЯ ред от Master
         if internal_key:
-    lookup_internal[internal_key] = record
+            lookup_internal[internal_key] = record
 
         if active_key:
-    lookup_active[active_key] = record
+            lookup_active[active_key] = record
 
     return lookup_internal, lookup_active
-
-
-def autofill_claims_from_master(claims_df, master_df):
-    """
-    Попълва New Claims по Master Database.
-
-    Ако има match:
-    - налива Ref. Number SUPPLIER
-    - налива Price
-
-    Ако няма match:
-    - Ref. Number SUPPLIER = 0
-    - Price = 0
-    """
-
-    claims_df = claims_df.copy()
-
-    for col in DIFFERENCES_COLUMNS:
-        if col not in claims_df.columns:
-            claims_df[col] = ""
-
-    claims_df = claims_df[DIFFERENCES_COLUMNS]
-    claims_df = clean_dataframe_as_text(claims_df)
-
-    lookup_internal, lookup_active = make_master_lookup(master_df)
-
-    filled_rows = []
-
-    for _, row in claims_df.iterrows():
-        row = row.copy()
-
-        internal_key = normalize_key(row.get("Вътрешен номер", ""))
-        active_key = normalize_key(row.get("Активен номер", ""))
-
-        match = None
-
-        if internal_key in lookup_internal:
-            match = lookup_internal[internal_key]
-
-        elif active_key in lookup_active:
-            match = lookup_active[active_key]
-
-        if match:
-            for field in [
-                "Доставчик",
-                "Vendor No",
-                "Вътрешен номер",
-                "Активен номер",
-            ]:
-                if clean_text(row.get(field, "")) == "":
-                    row[field] = match.get(field, "")
-
-            supplier_ref = clean_text(
-                match.get("Ref. Number SUPPLIER", "")
-            )
-
-            supplier_price = clean_text(
-                match.get("Price", "")
-            )
-
-            if supplier_ref == "":
-                supplier_ref = "0"
-
-            if supplier_price == "":
-                supplier_price = "0"
-
-            row["Ref. Number SUPPLIER"] = supplier_ref
-            row["Price"] = supplier_price
-
-        else:
-            row["Ref. Number SUPPLIER"] = "0"
-            row["Price"] = "0"
-
-        if clean_text(row.get("Склад за дост.", "")) == "":
-            row["Склад за дост."] = "B01"
-
-        if clean_text(row.get("Дата на подаване", "")) == "":
-            row["Дата на подаване"] = datetime.now().strftime("%d.%m.%Y")
-
-        if clean_text(row.get("СТАТУС - Попълва се от централата!", "")) == "":
-            row["СТАТУС - Попълва се от централата!"] = "Нова"
-
-        filled_rows.append(row)
-
-    result = pd.DataFrame(filled_rows)
-    result = result[DIFFERENCES_COLUMNS]
-
-    return result
-
 
 # ======================================================
 # NEW CLAIMS UPLOAD
