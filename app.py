@@ -641,8 +641,15 @@ def read_new_claims_upload(uploaded_file):
 
     # Difference идва от sheet Разлики Quantity
     result["Difference"] = sheet1.apply(
-        get_difference_for_row,
-        axis=1
+    get_difference_for_row,
+    axis=1
+)
+
+result["Difference"] = result["Difference"].apply(
+    lambda x: (
+        f"🔴 {x}"
+        if str(x).strip().startswith("-")
+        else f"🟢 {x}"
     )
 
     # ==================================================
