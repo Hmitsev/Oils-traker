@@ -725,26 +725,27 @@ difference_abs = pd.to_numeric(
 result["Стойност тотал от Нави"] = (
     price_num * difference_abs
 ).round(2)
-    result["Дата на подаване"] = datetime.now().strftime("%d.%m.%Y")
 
-    result["СТАТУС - Попълва се от централата!"] = "Нова"
+result["Дата на подаване"] = datetime.now().strftime("%d.%m.%Y")
 
-    result["№ документа за разлики"] = ""
+result["СТАТУС - Попълва се от централата!"] = "Нова"
 
-    result["Дата на обработка на докумнет"] = ""
+result["№ документа за разлики"] = ""
 
-    result["Допълнителен коментар"] = ""
+result["Дата на обработка на докумнет"] = ""
 
-    result = result[DIFFERENCES_COLUMNS]
+result["Допълнителен коментар"] = ""
 
-    result = clean_dataframe_as_text(result)
+result = result[DIFFERENCES_COLUMNS]
 
-    result = result[
-        (result["Вътрешен номер"].astype(str).str.strip() != "") |
-        (result["Активен номер"].astype(str).str.strip() != "")
-    ]
+result = clean_dataframe_as_text(result)
 
-    return result.reset_index(drop=True)
+result = result[
+    (result["Вътрешен номер"].astype(str).str.strip() != "") |
+    (result["Активен номер"].astype(str).str.strip() != "")
+]
+
+return result.reset_index(drop=True)
 # ======================================================
 # STATE
 # ======================================================
