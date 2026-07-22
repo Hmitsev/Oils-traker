@@ -404,6 +404,7 @@ def make_master_lookup(master_df):
 
 
 def autofill_claims_from_master(claims_df, master_df):
+
     claims_df = claims_df.copy()
 
     for col in DIFFERENCES_COLUMNS:
@@ -418,169 +419,96 @@ def autofill_claims_from_master(claims_df, master_df):
     filled_rows = []
 
     for _, row in claims_df.iterrows():
+
         row = row.copy()
 
-        internal_key = normalize_key(row.get("Вътрешен номер", ""))
-        active_key = normalize_key(row.get("Активен номер", ""))
+        internal_key = normalize_key(
+            row.get("Вътрешен номер", "")
+        )
+
+        active_key = normalize_key(
+            row.get("Активен номер", "")
+        )
 
         match = None
 
         if internal_key in lookup_internal:
             match = lookup_internal[internal_key]
+
         elif active_key in lookup_active:
             match = lookup_active[active_key]
 
+        # ==================================================
+        # НАМЕРЕН В MASTER DATABASE
+        # ==================================================
+
         if match:
-    for field in [
-        "Доставчик",
-        "Vendor No",
-        "Вътрешен номер",
-        "Активен номер",
-        "Ref. Number SUPPLIER",
-        "Price",
-    ]:
-        if clean_text(row.get(field, "")) == "":
-            row[field] = match.get(field, "")
 
-    # ==================================================
-    # FIX PRICE + REF NUMBER
-    # ==================================================
+            for field in [
+                "Доставчик",
+                "Vendor No",
+                "Вътрешен номер",
+                "Активен номер",
+                "Ref. Number SUPPLIER",
+                "Price",
+            ]:
 
-    supplier_ref = clean_text(
-        match.get("Ref. Number SUPPLIER", "")
-    )
+                if clean_text(row.get(field, "")) == "":
+                    row[field] = match.get(field, "")
 
-    supplier_price = clean_text(
-        match.get("Price", "")
-    )
+            supplier_ref = clean_text(
+                match.get("Ref. Number SUPPLIER", "")
+            )
 
-    if supplier_ref == "":
-        supplier_ref = "0"
+            supplier_price = clean_text(
+                match.get("Price", "")
+            )
 
-    if supplier_price == "":
-        supplier_price = "0"
+            if supplier_ref == "":
+                supplier_ref = "0"
 
-    row["Ref. Number SUPPLIER"] = supplier_ref
-    row["Price"] = supplier_price
+            if supplier_price == "":
+                supplier_price = "0"
 
-else:
+            row["Ref. Number SUPPLIER"] = supplier_ref
+            row["Price"] = supplier_price
 
-    # ако артикулът въобще го няма в master database
-    row["Ref. Number SUPPLIER"] = "0"
-    row["Price"] = "0"
+        # ==================================================
+        # НЕ Е НАМЕРЕН В MASTER DATABASE
+        # ==================================================
 
-        
+        else:
+
+            row["Ref. Number SUPPLIER"] = "0"
+            row["Price"] = "0"
+
+        # ==================================================
+        # DEFAULT VALUES
+        # ==================================================
 
         if clean_text(row.get("Склад за дост.", "")) == "":
             row["Склад за дост."] = "B01"
 
         if clean_text(row.get("Дата на подаване", "")) == "":
-            row["Дата на подаване"] = datetime.now().strftime("%d.%m.%Y")
+            row["Дата на подаване"] = datetime.now().strftime(
+                "%d.%m.%Y"
+            )
 
-        if clean_text(row.get("СТАТУС - Попълва се от централата!", "")) == "":
+        if clean_text(
+            row.get(
+                "СТАТУС - Попълва се от централата!",
+                ""
+            )
+        ) == "":
             row["СТАТУС - Попълва се от централата!"] = "Нова"
 
         filled_rows.append(row)
 
     result = pd.DataFrame(filled_rows)
+
     result = result[DIFFERENCES_COLUMNS]
+
     return result
-
-
-def read_new_claims_upload(uploaded_file):
-    """
-    Чете upload файл за New Claims.
-
-    Очаквана структура:
-    C = Доставчик
-    D = Доставчик № / Vendor No
-    E = Номер прием
-    F = Вътрешен №
-    G = Активен №
-    I = Quantity / официална разлика
-
-    Quantity от I влиза в Difference.
-    QTY и Received QTY засега остават празни.
-    """
-
-    try:
-        raw = pd.read_excel(
-            uploaded_file,
-            sheet_name=0,
-            dtype=object,
-            engine="openpyxl"
-        )
-    except Exception as e:
-        st.error(f"Грешка при четене на файла: {e}")
-        return pd.DataFrame(columns=DIFFERENCES_COLUMNS)
-
-    if raw.empty:
-        return pd.DataFrame(columns=DIFFERENCES_COLUMNS)
-
-    raw = normalize_columns(raw)
-    raw = clean_dataframe_as_text(raw)
-
-    if raw.shape[1] < 9:
-        st.error("Файлът трябва да има минимум 9 колони, защото използваме C, D, E, F, G и I.")
-        return pd.DataFrame(columns=DIFFERENCES_COLUMNS)
-
-    # C, D, E, F, G, I по позиция
-    col_c_supplier = raw.columns[2]
-    col_d_vendor = raw.columns[3]
-    col_e_receipt = raw.columns[4]
-    col_f_internal = raw.columns[5]
-    col_g_active = raw.columns[6]
-    col_i_quantity = raw.columns[8]
-
-    result = pd.DataFrame(columns=DIFFERENCES_COLUMNS)
-
-    result["Склад за дост."] = "B01"
-    result["Доставчик"] = raw[col_c_supplier].map(clean_text)
-    result["Vendor No"] = raw[col_d_vendor].map(clean_text)
-    result["Начин на подаване"] = "Upload"
-    result["Номер прием"] = raw[col_e_receipt].map(clean_text)
-    result["Вътрешен номер"] = raw[col_f_internal].map(clean_text)
-    result["Активен номер"] = raw[col_g_active].map(clean_text)
-
-    result["Delivery No"] = ""
-    result["Invoice No"] = ""
-    result["Invoice Date"] = ""
-
-    result["Ref. Number SUPPLIER"] = ""
-    result["Price"] = ""
-
-    result["QTY"] = ""
-    result["Received QTY"] = ""
-    result["Difference"] = raw[col_i_quantity].map(clean_text)
-
-    result["Подал разликата"] = ""
-    result["Стойност във валутата на доставчика"] = ""
-    result["Стойност (в лева)"] = ""
-    result["Дата на подаване"] = datetime.now().strftime("%d.%m.%Y")
-    result["СТАТУС - Попълва се от централата!"] = "Нова"
-    result["№ документа за разлики"] = ""
-    result["Дата на обработка на докумнет"] = ""
-    result["Допълнителен коментар"] = ""
-
-    result = result[DIFFERENCES_COLUMNS]
-    result = clean_dataframe_as_text(result)
-
-    result = result[
-        (result["Вътрешен номер"].astype(str).str.strip() != "") |
-        (result["Активен номер"].astype(str).str.strip() != "") |
-        (result["Номер прием"].astype(str).str.strip() != "")
-    ]
-
-    return result.reset_index(drop=True)
-
-
-def to_tsv(df):
-    if df is None or df.empty:
-        return ""
-
-    return df.to_csv(index=False, sep="\t")
-
-
 # ======================================================
 # STATE
 # ======================================================
