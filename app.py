@@ -51,7 +51,6 @@ DIFFERENCES_COLUMNS = [
     "QTY",
     "Received QTY",
     "Difference",
-    "Подал разликата",
     "Стойност във валутата на доставчика",
     "Стойност (в лева)",
     "Дата на подаване",
@@ -789,7 +788,6 @@ def read_new_claims_upload(uploaded_file):
     result["Received QTY"] = ""
     result["Difference"] = raw[col_i_quantity].map(clean_text)
 
-    result["Подал разликата"] = ""
     result["Стойност във валутата на доставчика"] = ""
     result["Стойност (в лева)"] = ""
     result["Дата на подаване"] = datetime.now().strftime("%d.%m.%Y")
