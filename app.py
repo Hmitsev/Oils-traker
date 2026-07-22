@@ -710,17 +710,22 @@ def read_new_claims_upload(uploaded_file):
     )
 
     # ==================================================
-    # Стойност тотал от Нави = Price × QTY
-    # ==================================================
+# Стойност тотал от Нави = Price × ABS(Difference)
+# ==================================================
 
-    price_num = pd.to_numeric(
-        result["Price"].astype(str).str.replace(",", ".", regex=False),
-        errors="coerce"
-    ).fillna(0)
+price_num = pd.to_numeric(
+    result["Price"].astype(str).str.replace(",", ".", regex=False),
+    errors="coerce"
+).fillna(0)
 
-    result["Стойност тотал от Нави"] = (
-        price_num * qty_num
-    ).round(2)
+difference_abs = pd.to_numeric(
+    result["Difference"].astype(str).str.replace(",", ".", regex=False),
+    errors="coerce"
+).fillna(0).abs()
+
+result["Стойност тотал от Нави"] = (
+    price_num * difference_abs
+).round(2)
 
     result["Дата на подаване"] = datetime.now().strftime("%d.%m.%Y")
 
