@@ -793,7 +793,10 @@ differences_df = st.session_state.differences_df.copy()
 
 if st.session_state.page == "Разлики":
 
-    st.markdown('<div class="section-title">📋 Основен списък с разлики</div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="section-title">📋 Основен списък с разлики</div>',
+        unsafe_allow_html=True
+    )
 
     total_rows = len(differences_df)
 
@@ -842,43 +845,39 @@ if st.session_state.page == "Разлики":
 
     if search.strip():
         search_value = search.strip().lower()
+
         mask = view_df.apply(
-            lambda row: row.astype(str).str.lower().str.contains(search_value, na=False).any(),
+            lambda row: row.astype(str)
+            .str.lower()
+            .str.contains(search_value, na=False)
+            .any(),
             axis=1
         )
+
         view_df = view_df[mask]
 
-    styled_df = view_df.style.applymap(
-    lambda v: (
-        "color:red;font-weight:bold"
-        if str(v).strip().startswith("-")
-        else (
-            "color:green;font-weight:bold"
-            if str(v).strip() not in ["", "0"]
-            else ""
-        )
-    ),
-    subset=["Difference"]
-)
-
-edited_df = st.data_editor(
-    view_df,
-    use_container_width=True,
-    hide_index=True,
-    num_rows="dynamic",
-    column_config={
-        "СТАТУС - Попълва се от централата!": st.column_config.SelectboxColumn(
-            "СТАТУС - Попълва се от централата!",
-            options=STATUS_OPTIONS,
-            required=False,
-        )
-    },
-    key="differences_editor"
-)
+    edited_df = st.data_editor(
+        view_df,
+        use_container_width=True,
+        hide_index=True,
+        num_rows="dynamic",
+        column_config={
+            "СТАТУС - Попълва се от централата!":
+            st.column_config.SelectboxColumn(
+                "СТАТУС - Попълва се от централата!",
+                options=STATUS_OPTIONS,
+                required=False,
+            )
+        },
+        key="differences_editor"
+    )
 
     if search.strip():
-        st.warning("Редактираш филтриран изглед. За реално записване на масови промени изчисти търсенето.")
+        st.warning(
+            "Редактираш филтриран изглед. За реално записване на масови промени изчисти търсенето."
+        )
     else:
+
         old_hash = dataframe_hash(differences_df)
         new_hash = dataframe_hash(edited_df)
 
@@ -892,7 +891,10 @@ edited_df = st.data_editor(
     with c1:
         st.download_button(
             "⬇️ Export CSV",
-            data=st.session_state.differences_df.to_csv(index=False, encoding="utf-8-sig"),
+            data=st.session_state.differences_df.to_csv(
+                index=False,
+                encoding="utf-8-sig"
+            ),
             file_name="differences_database.csv",
             mime="text/csv"
         )
@@ -901,8 +903,6 @@ edited_df = st.data_editor(
         if st.button("🔄 Презареди"):
             st.session_state.differences_df = load_differences_database()
             st.rerun()
-
-
 # ======================================================
 # PAGE: NEW CLAIMS
 # ======================================================
