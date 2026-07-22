@@ -513,8 +513,20 @@ def read_new_claims_upload(uploaded_file):
 
     result["Difference"] = raw["Quantity"]
 
+    # Стойност тотал от Нави = Цена × Количество
+    price_num = pd.to_numeric(
+        raw["Price per Invoice"],
+        errors="coerce"
+    ).fillna(0)
 
-    result["Стойност тотал от Нави"] = ""
+    qty_num = pd.to_numeric(
+        raw["Quantity"],
+        errors="coerce"
+    ).fillna(0)
+
+    result["Стойност тотал от Нави"] = (
+        price_num * qty_num
+    ).round(2)
 
     result["Дата на подаване"] = datetime.now().strftime("%d.%m.%Y")
 
@@ -536,14 +548,6 @@ def read_new_claims_upload(uploaded_file):
     ]
 
     return result.reset_index(drop=True)
-
-
-def to_tsv(df):
-    if df is None or df.empty:
-        return ""
-
-    return df.to_csv(index=False, sep="\t")
-
 
 # ======================================================
 # STATE
