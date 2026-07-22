@@ -465,27 +465,20 @@ def autofill_claims_from_master(claims_df, master_df):
 
 def read_new_claims_upload(uploaded_file):
     """
-    Чете upload файл за New Claims.
+    Чете директно Sheet1.
 
-    Очаквана структура:
-    C = Доставчик
-    D = Доставчик № / Vendor No
-    E = Номер прием
-    F = Вътрешен №
-    G = Активен №
-    I = Quantity / официална разлика
-
-    Quantity от I влиза в Difference.
-    QTY и Received QTY засега остават празни.
+    Не използва Master Database.
+    Взима всички нужни данни директно от файла.
     """
 
     try:
         raw = pd.read_excel(
             uploaded_file,
-            sheet_name=0,
+            sheet_name="Sheet1",
             dtype=object,
             engine="openpyxl"
         )
+
     except Exception as e:
         st.error(f"Грешка при четене на файла: {e}")
         return pd.DataFrame(columns=DIFFERENCES_COLUMNS)
@@ -496,55 +489,55 @@ def read_new_claims_upload(uploaded_file):
     raw = normalize_columns(raw)
     raw = clean_dataframe_as_text(raw)
 
-    if raw.shape[1] < 9:
-        st.error("Файлът трябва да има минимум 9 колони, защото използваме C, D, E, F, G и I.")
-        return pd.DataFrame(columns=DIFFERENCES_COLUMNS)
-
-    # C, D, E, F, G, I по позиция
-    col_c_supplier = raw.columns[2]
-    col_d_vendor = raw.columns[3]
-    col_e_receipt = raw.columns[4]
-    col_f_internal = raw.columns[5]
-    col_g_active = raw.columns[6]
-    col_i_quantity = raw.columns[8]
-
     result = pd.DataFrame(columns=DIFFERENCES_COLUMNS)
 
-    result["Склад за дост."] = "B01"
-    result["Доставчик"] = raw[col_c_supplier].map(clean_text)
-    result["Vendor No"] = raw[col_d_vendor].map(clean_text)
+    result["Склад за дост."] = raw["Location Code"]
+    result["Доставчик"] = raw["Vendor Name"]
+    result["Vendor No"] = raw["Buy-from Vendor No_"]
     result["Начин на подаване"] = "Upload"
-    result["Номер прием"] = raw[col_e_receipt].map(clean_text)
-    result["Вътрешен номер"] = raw[col_f_internal].map(clean_text)
-    result["Активен номер"] = raw[col_g_active].map(clean_text)
 
-    result["Delivery No"] = ""
-    result["Invoice No"] = ""
-    result["Invoice Date"] = ""
+    result["Номер прием"] = raw["Receipt No"]
 
-    result["Ref. Number SUPPLIER"] = ""
-    result["Price"] = ""
+    result["Вътрешен номер"] = raw["Item No"]
+    result["Активен номер"] = raw["Active No"]
 
-    result["QTY"] = ""
+    result["Delivery No"] = raw["Delivery No"]
+    result["Invoice No"] = raw["Invoice No"]
+    result["Invoice Date"] = raw["InvoiceDate"]
+
+    result["Ref. Number SUPPLIER"] = raw["Supplier Ref Num"]
+
+    result["Price"] = raw["Price per Invoice"]
+
+    result["QTY"] = raw["Quantity"]
+
     result["Received QTY"] = ""
-    result["Difference"] = raw[col_i_quantity].map(clean_text)
+
+    result["Difference"] = raw["Quantity"]
 
     result["Подал разликата"] = ""
+
     result["Стойност във валутата на доставчика"] = ""
+
     result["Стойност (в лева)"] = ""
+
     result["Дата на подаване"] = datetime.now().strftime("%d.%m.%Y")
+
     result["СТАТУС - Попълва се от централата!"] = "Нова"
+
     result["№ документа за разлики"] = ""
+
     result["Дата на обработка на докумнет"] = ""
+
     result["Допълнителен коментар"] = ""
 
     result = result[DIFFERENCES_COLUMNS]
+
     result = clean_dataframe_as_text(result)
 
     result = result[
         (result["Вътрешен номер"].astype(str).str.strip() != "") |
-        (result["Активен номер"].astype(str).str.strip() != "") |
-        (result["Номер прием"].astype(str).str.strip() != "")
+        (result["Активен номер"].astype(str).str.strip() != "")
     ]
 
     return result.reset_index(drop=True)
@@ -896,9 +889,9 @@ elif st.session_state.page == "New Claims":
         if parsed.empty:
             st.error("Не са намерени валидни редове във файла.")
         else:
-            filled = autofill_claims_from_master(parsed, master_df)
-            st.session_state.preview_claims_df = filled.copy()
-            st.success(f"Подготвени редове за добавяне: {len(filled)}")
+            st.session_state.preview_claims_df = parsed.copy()
+            st.success(
+                f"Подготвени редове за добавяне: {len(parsed)}")   
 
     preview_df = st.session_state.preview_claims_df.copy()
 
