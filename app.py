@@ -61,7 +61,6 @@ DIFFERENCES_COLUMNS = [
     "Receipt Date",
     "Brand",
     "PM Responsible",
-    "Дата на обработка на докумнет",
     "Допълнителен коментар",
 ]
 
