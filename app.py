@@ -227,7 +227,7 @@ def clean_dataframe_as_text(df):
         df[col] = df[col].map(clean_text)
     return df
 
-@st.cache_data    
+@st.cache_data
 def load_cross_reference_lookup():
     """
     Чете всички cros.ref Excel файлове в проекта и създава lookup:
@@ -237,8 +237,6 @@ def load_cross_reference_lookup():
     Пример:
     200134 -> 586.693
     """
-
-    st.write("START cross refs")
 
     cross_lookup = {}
 
@@ -257,85 +255,70 @@ def load_cross_reference_lookup():
 
     for file in cross_files:
 
-        st.write("Reading file:", file)
-
         try:
-            xls = pd.ExcelFile(file, engine="openpyxl")
+            df = pd.read_excel(
+                file,
+                sheet_name=0,
+                dtype=object,
+                engine="openpyxl"
+            )
 
-        except Exception as e:
-            st.write("ERROR:", file, str(e))
+        except Exception:
             continue
 
-        for sheet in xls.sheet_names[:1]:
+        if df.empty:
+            continue
 
-            try:
-                df = pd.read_excel(
-                    file,
-                    sheet_name=sheet,
-                    dtype=object,
-                    engine="openpyxl"
-                )
+        df = normalize_columns(df)
+        df = clean_dataframe_as_text(df)
 
-            except Exception as e:
-                st.write("Sheet error:", file, sheet, str(e))
-                continue
+        item_col = None
+        cross_col = None
 
-            if df.empty:
-                continue
+        for col in df.columns:
+            col_clean = clean_text(col).lower().replace(".", "").strip()
 
-            df = normalize_columns(df)
-            df = clean_dataframe_as_text(df)
+            if col_clean in [
+                "item no",
+                "item",
+                "вътрешен номер",
+                "вътрешен no",
+                "вътрешен"
+            ]:
+                item_col = col
 
-            item_col = None
-            cross_col = None
+            if col_clean in [
+                "cross-reference no",
+                "cross reference no",
+                "cross-reference",
+                "cross reference",
+                "cross ref",
+                "крос референс",
+                "крос номер"
+            ]:
+                cross_col = col
 
-            for col in df.columns:
+        if item_col is None and "Item No." in df.columns:
+            item_col = "Item No."
 
-                col_clean = clean_text(col).lower().replace(".", "").strip()
+        if cross_col is None and "Cross-Reference No." in df.columns:
+            cross_col = "Cross-Reference No."
 
-                if col_clean in [
-                    "item no",
-                    "item",
-                    "вътрешен номер",
-                    "вътрешен no",
-                    "вътрешен"
-                ]:
-                    item_col = col
+        if item_col is None or cross_col is None:
+            continue
 
-                if col_clean in [
-                    "cross-reference no",
-                    "cross reference no",
-                    "cross-reference",
-                    "cross reference",
-                    "cross ref",
-                    "крос референс",
-                    "крос номер"
-                ]:
-                    cross_col = col
+        for _, row in df.iterrows():
 
-            if item_col is None and "Item No." in df.columns:
-                item_col = "Item No."
+            item_no = normalize_key(
+                row.get(item_col, "")
+            )
 
-            if cross_col is None and "Cross-Reference No." in df.columns:
-                cross_col = "Cross-Reference No."
+            cross_ref = clean_text(
+                row.get(cross_col, "")
+            )
 
-            if item_col is None or cross_col is None:
-                continue
-
-            for _, row in df.iterrows():
-
-                item_no = normalize_key(
-                    row.get(item_col, "")
-                )
-
-                cross_ref = clean_text(
-                    row.get(cross_col, "")
-                )
-
-                if item_no and cross_ref:
-                    cross_lookup[item_no] = cross_ref
-
-    st.write("Loaded:", len(cross_lookup))
+            if item_no and cross_ref:
+                cross_lookup[item_no] = cross_ref
 
     return cross_lookup
 
@@ -678,7 +661,6 @@ def read_new_claims_upload(uploaded_file):
     # ==================================================
 
     cross_ref_lookup = load_cross_reference_lookup()
-    st.write("Cross refs loaded:", len(cross_ref_lookup))
 
     # ==================================================
     # SHAREPOINT LOOKUP - НАЧИН НА ПОДАВАНЕ
