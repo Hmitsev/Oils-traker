@@ -1086,6 +1086,7 @@ elif st.session_state.page == "New Claims":
                 f"Подготвени редове за добавяне: {len(parsed)}")   
 
     preview_df = st.session_state.preview_claims_df.copy()
+    preview_df = preview_df.loc[:, ~preview_df.columns.duplicated()].copy()
 
     if not preview_df.empty:
         st.subheader("Преглед преди добавяне в основния списък")
