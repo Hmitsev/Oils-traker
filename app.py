@@ -266,7 +266,7 @@ def load_cross_reference_lookup():
             st.write("ERROR:", file, str(e))
             continue
 
-        for sheet in xls.sheet_names:
+        for sheet in xls.sheet_names[:1]:
 
             try:
                 df = pd.read_excel(
