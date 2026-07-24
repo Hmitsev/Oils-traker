@@ -57,7 +57,6 @@ DIFFERENCES_COLUMNS = [
     "Дата на подаване",
     "СТАТУС - Попълва се от централата!",
     "№ документа за разлики",
-    "№ документа за разлики",
     "Дата на обработка на докумнет",
     "Receipt Date",
     "Brand",
@@ -716,7 +715,7 @@ def read_new_claims_upload(uploaded_file):
     result["Received QTY"] = (
         qty_num + diff_num
     )
-    # ==================================================
+        # ==================================================
     # Стойност тотал от Нави = Price × ABS(Difference)
     # ==================================================
 
@@ -741,14 +740,19 @@ def read_new_claims_upload(uploaded_file):
     result["№ документа за разлики"] = ""
 
     result["Дата на обработка на докумнет"] = ""
-    
-    result["Receipt Date"] = sheet1["Receipt Date"]
 
-    result["Brand"] = sheet1["Brand"]
+    result["Receipt Date"] = sheet1.get("Receipt Date", "")
 
-    result["PM Responsible"] = sheet1["PM Responsible"]
+    result["Brand"] = sheet1.get("Brand", "")
+
+    result["PM Responsible"] = sheet1.get("PM Responsible", "")
 
     result["Допълнителен коментар"] = ""
+
+    # гарантира липсващи колони
+    for col in DIFFERENCES_COLUMNS:
+        if col not in result.columns:
+            result[col] = ""
 
     result = result[DIFFERENCES_COLUMNS]
 
