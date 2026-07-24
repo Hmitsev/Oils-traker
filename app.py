@@ -254,6 +254,7 @@ def load_cross_reference_lookup():
     cross_files = sorted(cross_files)
 
     for file in cross_files:
+        st.write("Reading file:", file)
 
         try:
             xls = pd.ExcelFile(file, engine="openpyxl")
