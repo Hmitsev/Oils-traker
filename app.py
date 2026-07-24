@@ -931,12 +931,16 @@ def read_new_claims_upload(uploaded_file):
         (result["Активен номер"].astype(str).str.strip() != "")
     ]
 
-    def to_tsv(df):
+    return result.reset_index(drop=True)
+
+
+def to_tsv(df):
     if df is None or df.empty:
         return ""
 
     return df.to_csv(index=False, sep="\t")
-    
+
+
 # ======================================================
 # STATE
 # ======================================================
