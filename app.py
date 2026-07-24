@@ -229,7 +229,6 @@ def clean_dataframe_as_text(df):
 
 
 def load_cross_reference_lookup():
-    st.write("START cross refs")
     """
     Чете всички cros.ref Excel файлове в проекта и създава lookup:
 
@@ -238,6 +237,8 @@ def load_cross_reference_lookup():
     Пример:
     200134 -> 586.693
     """
+
+    st.write("START cross refs")
 
     cross_lookup = {}
 
@@ -255,12 +256,14 @@ def load_cross_reference_lookup():
     cross_files = sorted(cross_files)
 
     for file in cross_files:
+
         st.write("Reading file:", file)
 
         try:
             xls = pd.ExcelFile(file, engine="openpyxl")
 
-        except Exception:
+        except Exception as e:
+            st.write("ERROR:", file, str(e))
             continue
 
         for sheet in xls.sheet_names:
@@ -273,7 +276,8 @@ def load_cross_reference_lookup():
                     engine="openpyxl"
                 )
 
-            except Exception:
+            except Exception as e:
+                st.write("Sheet error:", file, sheet, str(e))
                 continue
 
             if df.empty:
@@ -286,6 +290,7 @@ def load_cross_reference_lookup():
             cross_col = None
 
             for col in df.columns:
+
                 col_clean = clean_text(col).lower().replace(".", "").strip()
 
                 if col_clean in [
@@ -331,6 +336,7 @@ def load_cross_reference_lookup():
                     cross_lookup[item_no] = cross_ref
 
     st.write("Loaded:", len(cross_lookup))
+
     return cross_lookup
 
 
