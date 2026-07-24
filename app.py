@@ -669,6 +669,7 @@ def read_new_claims_upload(uploaded_file):
     # ==================================================
 
     cross_ref_lookup = load_cross_reference_lookup()
+    st.write("Cross refs loaded:", len(cross_ref_lookup))
 
     # ==================================================
     # SHAREPOINT LOOKUP - НАЧИН НА ПОДАВАНЕ
