@@ -742,7 +742,7 @@ def read_new_claims_upload(uploaded_file):
 
     result["Дата на обработка на докумнет"] = ""
     
-    5result["Receipt Date"] = sheet1["Receipt Date"]
+    result["Receipt Date"] = sheet1["Receipt Date"]
 
     result["Brand"] = sheet1["Brand"]
 
