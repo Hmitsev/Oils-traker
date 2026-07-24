@@ -57,6 +57,11 @@ DIFFERENCES_COLUMNS = [
     "Дата на подаване",
     "СТАТУС - Попълва се от централата!",
     "№ документа за разлики",
+    "№ документа за разлики",
+    "Дата на обработка на докумнет",
+    "Receipt Date",
+    "Brand",
+    "PM Responsible",
     "Дата на обработка на докумнет",
     "Допълнителен коментар",
 ]
@@ -559,6 +564,9 @@ def read_new_claims_upload(uploaded_file):
         "Supplier Ref Num",
         "Price per Invoice",
         "Quantity",
+        "Receipt Date",
+        "Brand",
+        "PM Responsible",
     ]
 
     required_diff_columns = [
@@ -708,7 +716,7 @@ def read_new_claims_upload(uploaded_file):
     result["Received QTY"] = (
         qty_num + diff_num
     )
-        # ==================================================
+    # ==================================================
     # Стойност тотал от Нави = Price × ABS(Difference)
     # ==================================================
 
@@ -733,6 +741,12 @@ def read_new_claims_upload(uploaded_file):
     result["№ документа за разлики"] = ""
 
     result["Дата на обработка на докумнет"] = ""
+    
+    5result["Receipt Date"] = sheet1["Receipt Date"]
+
+    result["Brand"] = sheet1["Brand"]
+
+    result["PM Responsible"] = sheet1["PM Responsible"]
 
     result["Допълнителен коментар"] = ""
 
