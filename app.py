@@ -229,6 +229,7 @@ def clean_dataframe_as_text(df):
 
 
 def load_cross_reference_lookup():
+    st.write("START cross refs")
     """
     Чете всички cros.ref Excel файлове в проекта и създава lookup:
 
@@ -330,6 +331,7 @@ def load_cross_reference_lookup():
                     cross_lookup[item_no] = cross_ref
 
     return cross_lookup
+    st.write("Loaded:", len(cross_lookup))
 
 
 def get_excel_files():
