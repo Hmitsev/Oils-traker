@@ -227,7 +227,7 @@ def clean_dataframe_as_text(df):
         df[col] = df[col].map(clean_text)
     return df
 
-
+@st.cache_data    
 def load_cross_reference_lookup():
     """
     Чете всички cros.ref Excel файлове в проекта и създава lookup:
