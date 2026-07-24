@@ -330,8 +330,8 @@ def load_cross_reference_lookup():
                 if item_no and cross_ref:
                     cross_lookup[item_no] = cross_ref
 
-    return cross_lookup
     st.write("Loaded:", len(cross_lookup))
+    return cross_lookup
 
 
 def get_excel_files():
