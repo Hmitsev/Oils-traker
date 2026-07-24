@@ -229,7 +229,37 @@ def clean_dataframe_as_text(df):
 
 @st.cache_data
 def load_cross_reference_lookup():
-    return {}
+
+    cross_lookup = {}
+
+    for file in [
+        "cros.ref.xlsx"
+    ]:
+        try:
+            df = pd.read_excel(
+                file,
+                sheet_name=0,
+                dtype=str,
+                engine="openpyxl"
+            ).fillna("")
+
+            if "Item No." not in df.columns:
+                continue
+
+            if "Cross-Reference No." not in df.columns:
+                continue
+
+            for _, row in df.iterrows():
+                cross_lookup[
+                    normalize_key(row["Item No."])
+                ] = clean_text(
+                    row["Cross-Reference No."]
+                )
+
+        except Exception:
+            pass
+
+    return cross_lookup
 
 def get_excel_files():
     files = []
