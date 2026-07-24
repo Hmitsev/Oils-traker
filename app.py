@@ -58,10 +58,10 @@ DIFFERENCES_COLUMNS = [
     "СТАТУС - Попълва се от централата!",
     "№ документа за разлики",
     "Дата на обработка на докумнет",
-    "Допълнителен коментар",
     "Receipt Date",
     "Brand",
     "PM Responsible",
+    "Допълнителен коментар",
 ]
 
 STATUS_OPTIONS = [
@@ -228,6 +228,109 @@ def clean_dataframe_as_text(df):
     return df
 
 
+def load_cross_reference_lookup():
+    """
+    Чете всички cros.ref Excel файлове в проекта и създава lookup:
+
+    Item No. -> Cross-Reference No.
+
+    Пример:
+    200134 -> 586.693
+    """
+
+    cross_lookup = {}
+
+    cross_files = []
+
+    for file in os.listdir("."):
+        file_lower = file.lower()
+
+        if file.startswith("~$"):
+            continue
+
+        if file_lower.endswith(".xlsx") and file_lower.startswith("cros.ref"):
+            cross_files.append(file)
+
+    cross_files = sorted(cross_files)
+
+    for file in cross_files:
+
+        try:
+            xls = pd.ExcelFile(file, engine="openpyxl")
+
+        except Exception:
+            continue
+
+        for sheet in xls.sheet_names:
+
+            try:
+                df = pd.read_excel(
+                    file,
+                    sheet_name=sheet,
+                    dtype=object,
+                    engine="openpyxl"
+                )
+
+            except Exception:
+                continue
+
+            if df.empty:
+                continue
+
+            df = normalize_columns(df)
+            df = clean_dataframe_as_text(df)
+
+            item_col = None
+            cross_col = None
+
+            for col in df.columns:
+                col_clean = clean_text(col).lower().replace(".", "").strip()
+
+                if col_clean in [
+                    "item no",
+                    "item",
+                    "вътрешен номер",
+                    "вътрешен no",
+                    "вътрешен"
+                ]:
+                    item_col = col
+
+                if col_clean in [
+                    "cross-reference no",
+                    "cross reference no",
+                    "cross-reference",
+                    "cross reference",
+                    "cross ref",
+                    "крос референс",
+                    "крос номер"
+                ]:
+                    cross_col = col
+
+            if item_col is None and "Item No." in df.columns:
+                item_col = "Item No."
+
+            if cross_col is None and "Cross-Reference No." in df.columns:
+                cross_col = "Cross-Reference No."
+
+            if item_col is None or cross_col is None:
+                continue
+
+            for _, row in df.iterrows():
+
+                item_no = normalize_key(
+                    row.get(item_col, "")
+                )
+
+                cross_ref = clean_text(
+                    row.get(cross_col, "")
+                )
+
+                if item_no and cross_ref:
+                    cross_lookup[item_no] = cross_ref
+
+    return cross_lookup
+
+
 def get_excel_files():
     files = []
     for file in os.listdir("."):
@@ -291,7 +394,9 @@ def build_master_database_from_excels():
         source_log.append(f"{file} / {sheet}")
 
     if not all_master_rows:
-        empty = pd.DataFrame(columns=MASTER_REQUIRED_COLUMNS + ["source_file", "source_sheet"])
+        empty = pd.DataFrame(
+            columns=MASTER_REQUIRED_COLUMNS + ["source_file", "source_sheet"]
+        )
         return empty, source_log
 
     master = pd.concat(all_master_rows, ignore_index=True)
@@ -299,11 +404,19 @@ def build_master_database_from_excels():
 
     master["_key_internal"] = master["Вътрешен номер"].map(normalize_key)
     master["_key_active"] = master["Активен номер"].map(normalize_key)
-    master["_dedupe_key"] = master["_key_internal"] + "||" + master["_key_active"]
+    master["_dedupe_key"] = (
+        master["_key_internal"] + "||" + master["_key_active"]
+    )
 
-    master = master.drop_duplicates(subset=["_dedupe_key"], keep="first")
+    master = master.drop_duplicates(
+        subset=["_dedupe_key"],
+        keep="first"
+    )
 
-    master = master.drop(columns=["_key_internal", "_key_active", "_dedupe_key"])
+    master = master.drop(
+        columns=["_key_internal", "_key_active", "_dedupe_key"]
+    )
+
     master = master.reset_index(drop=True)
 
     return master, source_log
@@ -316,7 +429,11 @@ def save_master_database(df):
         if col not in df.columns:
             df[col] = ""
 
-    ordered_cols = MASTER_REQUIRED_COLUMNS + [c for c in df.columns if c not in MASTER_REQUIRED_COLUMNS]
+    ordered_cols = (
+        MASTER_REQUIRED_COLUMNS
+        + [c for c in df.columns if c not in MASTER_REQUIRED_COLUMNS]
+    )
+
     df = df[ordered_cols]
     df = clean_dataframe_as_text(df)
     df.to_csv(MASTER_DB_FILE, index=False, encoding="utf-8-sig")
@@ -324,7 +441,12 @@ def save_master_database(df):
 
 def load_master_database():
     if os.path.exists(MASTER_DB_FILE):
-        df = pd.read_csv(MASTER_DB_FILE, dtype=str, keep_default_na=False)
+        df = pd.read_csv(
+            MASTER_DB_FILE,
+            dtype=str,
+            keep_default_na=False
+        )
+
         df = clean_dataframe_as_text(df)
 
         for col in MASTER_REQUIRED_COLUMNS:
@@ -341,6 +463,8 @@ def load_master_database():
 def save_differences_database(df):
     df = df.copy()
 
+    df = df.loc[:, ~df.columns.duplicated()].copy()
+
     for col in DIFFERENCES_COLUMNS:
         if col not in df.columns:
             df[col] = ""
@@ -352,8 +476,15 @@ def save_differences_database(df):
 
 def load_differences_database():
     if os.path.exists(DIFFERENCES_DB_FILE):
-        df = pd.read_csv(DIFFERENCES_DB_FILE, dtype=str, keep_default_na=False)
+        df = pd.read_csv(
+            DIFFERENCES_DB_FILE,
+            dtype=str,
+            keep_default_na=False
+        )
+
         df = clean_dataframe_as_text(df)
+
+        df = df.loc[:, ~df.columns.duplicated()].copy()
 
         for col in DIFFERENCES_COLUMNS:
             if col not in df.columns:
@@ -397,7 +528,9 @@ def make_master_lookup(master_df):
             "Vendor No": clean_text(row.get("Vendor No", "")),
             "Вътрешен номер": clean_text(row.get("Вътрешен номер", "")),
             "Активен номер": clean_text(row.get("Активен номер", "")),
-            "Ref. Number SUPPLIER": clean_text(row.get("Ref. Number SUPPLIER", "")),
+            "Ref. Number SUPPLIER": clean_text(
+                row.get("Ref. Number SUPPLIER", "")
+            ),
             "Price": clean_text(row.get("Price", "")),
         }
 
@@ -449,9 +582,11 @@ def autofill_claims_from_master(claims_df, master_df):
                 if clean_text(row.get(field, "")) == "":
                     row[field] = match.get(field, "")
 
-            # Важно: Ref. Number SUPPLIER и Price винаги ги обновяваме от Master,
-            # защото това е точната база за приложението.
-            row["Ref. Number SUPPLIER"] = match.get("Ref. Number SUPPLIER", "")
+            row["Ref. Number SUPPLIER"] = match.get(
+                "Ref. Number SUPPLIER",
+                ""
+            )
+
             row["Price"] = match.get("Price", "")
 
         if clean_text(row.get("Склад за дост.", "")) == "":
@@ -472,6 +607,328 @@ def autofill_claims_from_master(claims_df, master_df):
 
 def read_new_claims_upload(uploaded_file):
     """
+    Чете директно два листа от upload файла:
+
+    1) Sheet1
+       - съдържа основните данни от Нави
+       - Quantity = QTY по Нави
+
+    2) Разлики
+       - съдържа реалната разлика
+       - Quantity = Difference
+
+    Логика:
+    QTY = Sheet1 Quantity
+    Difference = Разлики Quantity
+    Received QTY = QTY + Difference
+
+    Ref. Number SUPPLIER:
+    Първо търси по Item No в cros.ref файловете.
+    Ако не намери - оставя Supplier Ref Num от Sheet1.
+    """
+
+    try:
+        sheet1 = pd.read_excel(
+            uploaded_file,
+            sheet_name="Sheet1",
+            dtype=object,
+            engine="openpyxl"
+        )
+
+        diff_sheet = pd.read_excel(
+            uploaded_file,
+            sheet_name="Разлики",
+            dtype=object,
+            engine="openpyxl"
+        )
+
+    except Exception as e:
+        st.error(f"Грешка при четене на файла: {e}")
+        return pd.DataFrame(columns=DIFFERENCES_COLUMNS)
+
+    if sheet1.empty:
+        st.error("Sheet1 е празен.")
+        return pd.DataFrame(columns=DIFFERENCES_COLUMNS)
+
+    if diff_sheet.empty:
+        st.error("Sheet 'Разлики' е празен.")
+        return pd.DataFrame(columns=DIFFERENCES_COLUMNS)
+
+    sheet1 = normalize_columns(sheet1)
+    sheet1 = clean_dataframe_as_text(sheet1)
+
+    diff_sheet = normalize_columns(diff_sheet)
+    diff_sheet = clean_dataframe_as_text(diff_sheet)
+
+    # ==================================================
+    # CROSS REFERENCE LOOKUP
+    # ==================================================
+
+    cross_ref_lookup = load_cross_reference_lookup()
+
+    # ==================================================
+    # SHAREPOINT LOOKUP - НАЧИН НА ПОДАВАНЕ
+    # ==================================================
+
+    submit_lookup = {}
+
+    try:
+        sharepoint_df = pd.read_excel(
+            "Sharepoint_Разлики_2026.xlsx",
+            dtype=str,
+            engine="openpyxl"
+        ).fillna("")
+
+        sharepoint_df = normalize_columns(sharepoint_df)
+
+        if (
+            "Name" in sharepoint_df.columns
+            and "линк към сайт или спец.бланка" in sharepoint_df.columns
+        ):
+            submit_lookup = dict(
+                zip(
+                    sharepoint_df["Name"]
+                    .astype(str)
+                    .str.strip()
+                    .str.upper(),
+                    sharepoint_df["линк към сайт или спец.бланка"]
+                    .astype(str)
+                )
+            )
+
+    except Exception:
+        submit_lookup = {}
+
+    required_sheet1_columns = [
+        "Location Code",
+        "Vendor Name",
+        "Buy-from Vendor No_",
+        "Receipt No",
+        "Item No",
+        "Active No",
+        "Delivery No",
+        "Invoice No",
+        "InvoiceDate",
+        "Supplier Ref Num",
+        "Price per Invoice",
+        "Quantity",
+        "Receipt Date",
+        "Brand",
+        "PM Responsible",
+    ]
+
+    required_diff_columns = [
+        "Вътрешен №",
+        "Активен №",
+        "Quantity",
+    ]
+
+    missing_sheet1 = [
+        col for col in required_sheet1_columns
+        if col not in sheet1.columns
+    ]
+
+    missing_diff = [
+        col for col in required_diff_columns
+        if col not in diff_sheet.columns
+    ]
+
+    if missing_sheet1:
+        st.error(
+            "В Sheet1 липсват колони: "
+            + ", ".join(missing_sheet1)
+        )
+        return pd.DataFrame(columns=DIFFERENCES_COLUMNS)
+
+    if missing_diff:
+        st.error(
+            "В sheet 'Разлики' липсват колони: "
+            + ", ".join(missing_diff)
+        )
+        return pd.DataFrame(columns=DIFFERENCES_COLUMNS)
+
+    # ==================================================
+    # LOOKUP ЗА DIFFERENCE ОТ SHEET "Разлики"
+    # ==================================================
+
+    diff_lookup_full = {}
+    diff_lookup_internal = {}
+
+    for _, diff_row in diff_sheet.iterrows():
+
+        diff_internal = normalize_key(
+            diff_row.get("Вътрешен №", "")
+        )
+
+        diff_active = normalize_key(
+            diff_row.get("Активен №", "")
+        )
+
+        diff_qty = clean_text(
+            diff_row.get("Quantity", "")
+        )
+
+        full_key = diff_internal + "||" + diff_active
+
+        if diff_internal or diff_active:
+            diff_lookup_full[full_key] = diff_qty
+
+        if diff_internal:
+            diff_lookup_internal[diff_internal] = diff_qty
+
+    def get_difference_for_row(row):
+
+        internal_key = normalize_key(
+            row.get("Item No", "")
+        )
+
+        active_key = normalize_key(
+            row.get("Active No", "")
+        )
+
+        full_key = internal_key + "||" + active_key
+
+        if full_key in diff_lookup_full:
+            return diff_lookup_full[full_key]
+
+        if internal_key in diff_lookup_internal:
+            return diff_lookup_internal[internal_key]
+
+        return "0"
+
+    # ==================================================
+    # ОСНОВНА ТАБЛИЦА
+    # ==================================================
+
+    result = pd.DataFrame(columns=DIFFERENCES_COLUMNS)
+
+    result["Склад за дост."] = sheet1["Location Code"]
+
+    result["Доставчик"] = sheet1["Vendor Name"]
+
+    result["Vendor No"] = sheet1["Buy-from Vendor No_"]
+
+    result["Начин на подаване"] = result["Доставчик"].apply(
+        lambda x: submit_lookup.get(
+            str(x).strip().upper(),
+            ""
+        )
+    )
+
+    result["Номер прием"] = sheet1["Receipt No"]
+
+    result["Вътрешен номер"] = sheet1["Item No"]
+
+    result["Активен номер"] = sheet1["Active No"]
+
+    result["Delivery No"] = sheet1["Delivery No"]
+
+    result["Invoice No"] = sheet1["Invoice No"]
+
+    result["Invoice Date"] = sheet1["InvoiceDate"]
+
+    # ==================================================
+    # Ref. Number SUPPLIER
+    # Първо търсим по Вътрешен номер в cros.ref файловете.
+    # Ако няма намерен cross reference, оставяме Supplier Ref Num от Sheet1.
+    # ==================================================
+
+    fallback_supplier_ref = sheet1["Supplier Ref Num"].map(clean_text)
+
+    result["Ref. Number SUPPLIER"] = sheet1["Item No"].apply(
+        lambda x: cross_ref_lookup.get(
+            normalize_key(x),
+            ""
+        )
+    )
+
+    result["Ref. Number SUPPLIER"] = result[
+        "Ref. Number SUPPLIER"
+    ].where(
+        result["Ref. Number SUPPLIER"].astype(str).str.strip() != "",
+        fallback_supplier_ref
+    )
+
+    result["Price"] = sheet1["Price per Invoice"]
+
+    result["QTY"] = sheet1["Quantity"]
+
+    result["Difference"] = sheet1.apply(
+        get_difference_for_row,
+        axis=1
+    )
+
+    result["Diff Status"] = result["Difference"].apply(
+        lambda x: "🔴 минус" if str(x).strip().startswith("-") else "🟢 плюс"
+    )
+
+    # ==================================================
+    # Received QTY = QTY + Difference
+    # ==================================================
+
+    qty_num = pd.to_numeric(
+        result["QTY"].astype(str).str.replace(",", ".", regex=False),
+        errors="coerce"
+    ).fillna(0)
+
+    diff_num = pd.to_numeric(
+        result["Difference"].astype(str).str.replace(",", ".", regex=False),
+        errors="coerce"
+    ).fillna(0)
+
+    result["Received QTY"] = (
+        qty_num + diff_num
+    )
+
+    # ==================================================
+    # Стойност тотал от Нави = Price × ABS(Difference)
+    # ==================================================
+
+    price_num = pd.to_numeric(
+        result["Price"].astype(str).str.replace(",", ".", regex=False),
+        errors="coerce"
+    ).fillna(0)
+
+    difference_abs = pd.to_numeric(
+        result["Difference"].astype(str).str.replace(",", ".", regex=False),
+        errors="coerce"
+    ).fillna(0).abs()
+
+    result["Стойност тотал от Нави"] = (
+        price_num * difference_abs
+    ).round(2)
+
+    result["Дата на подаване"] = datetime.now().strftime("%d.%m.%Y")
+
+    result["СТАТУС - Попълва се от централата!"] = "Нова"
+
+    result["№ документа за разлики"] = ""
+
+    result["Дата на обработка на докумнет"] = ""
+
+    result["Receipt Date"] = sheet1.get("Receipt Date", "")
+
+    result["Brand"] = sheet1.get("Brand", "")
+
+    result["PM Responsible"] = sheet1.get("PM Responsible", "")
+
+    result["Допълнителен коментар"] = ""
+
+    for col in DIFFERENCES_COLUMNS:
+        if col not in result.columns:
+            result[col] = ""
+
+    result = result[DIFFERENCES_COLUMNS]
+
+    result = clean_dataframe_as_text(result)
+
+    result = result[
+        (result["Вътрешен номер"].astype(str).str.strip() != "") |
+        (result["Активен номер"].astype(str).str.strip() != "")
+    ]
+
+    return result.reset_index(drop=True)
+
     Чете директно два листа от upload файла:
 
     1) Sheet1
@@ -520,10 +977,16 @@ def read_new_claims_upload(uploaded_file):
         return pd.DataFrame(columns=DIFFERENCES_COLUMNS)
 
     sheet1 = normalize_columns(sheet1)
-    sheet1 = clean_dataframe_as_text(sheet1)
+sheet1 = clean_dataframe_as_text(sheet1)
 
-    diff_sheet = normalize_columns(diff_sheet)
-    diff_sheet = clean_dataframe_as_text(diff_sheet)
+diff_sheet = normalize_columns(diff_sheet)
+diff_sheet = clean_dataframe_as_text(diff_sheet)
+
+# ==================================================
+# CROSS REFERENCE LOOKUP
+# ==================================================
+
+cross_ref_lookup = load_cross_reference_lookup()
 
     # ==================================================
     # SHAREPOINT LOOKUP - НАЧИН НА ПОДАВАНЕ
@@ -684,7 +1147,25 @@ def read_new_claims_upload(uploaded_file):
 
     result["Invoice Date"] = sheet1["InvoiceDate"]
 
-    result["Ref. Number SUPPLIER"] = sheet1["Supplier Ref Num"]
+# ==================================================
+# Ref. Number SUPPLIER
+# Първо търсим по Вътрешен номер в cros.ref файловете.
+# Ако няма намерен cross reference, оставяме Supplier Ref Num от Sheet1.
+# ==================================================
+
+fallback_supplier_ref = sheet1["Supplier Ref Num"].map(clean_text)
+
+result["Ref. Number SUPPLIER"] = sheet1["Item No"].apply(
+    lambda x: cross_ref_lookup.get(
+        normalize_key(x),
+        ""
+    )
+)
+
+result["Ref. Number SUPPLIER"] = result["Ref. Number SUPPLIER"].where(
+    result["Ref. Number SUPPLIER"].astype(str).str.strip() != "",
+    fallback_supplier_ref
+)
 
     result["Price"] = sheet1["Price per Invoice"]
 
