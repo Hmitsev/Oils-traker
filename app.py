@@ -229,6 +229,7 @@ def clean_dataframe_as_text(df):
 
 @st.cache_data
 def load_cross_reference_lookup():
+    return {}
     """
     Чете всички cros.ref Excel файлове в проекта и създава lookup:
 
